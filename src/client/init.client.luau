@@ -1,7 +1,7 @@
 --!strict
--- Client bootstrap for Sword Blox Online.
+-- Client bootstrap for Clocked Out.
 -- ScreenGui -> design-space root with UIScale (1280x720, clamp 0.45 to 1.35,
--- x1.1 on touch-only) -> State -> HUD, toasts, banners, Ledger, input.
+-- x1.1 on touch-only) -> State -> HUD, toasts, banners, Ledger, input, combat.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -24,6 +24,7 @@ local Hud = require(script.Hud)
 local Ledger = require(script.Ledger)
 local Input = require(script.Input)
 local AdminPanel = require(script.AdminPanel)
+local Combat = require(script.Combat)
 
 local player = Players.LocalPlayer
 
@@ -37,7 +38,7 @@ end)
 local DESIGN = Vector2.new(1280, 720)
 
 local screen = Instance.new("ScreenGui")
-screen.Name = "SBO"
+screen.Name = "ClockedOut"
 screen.ResetOnSpawn = false
 screen.IgnoreGuiInset = false
 screen.ScreenInsets = Enum.ScreenInsets.CoreUISafeInsets
@@ -85,6 +86,7 @@ Hud.init(root)
 Ledger.init(root)
 Input.init()
 AdminPanel.init(root)
+Combat.init(root)
 
 Router.Changed:Connect(function(open)
 	Sound.play(if open then "ui_open" else "ui_close")

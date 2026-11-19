@@ -1,105 +1,94 @@
 --!strict
--- Map tab: floor list 01 to 100, state per floor, the server front line and
--- teleport gate travel. Labyrinth maps join this tab once labyrinths exist.
+-- MAP tab: a comic page of eight panels, your store and the seven districts.
+-- Each panel says one thing: GO, HERE, or what bounty unlocks it.
 
+local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage:WaitForChild("Shared")
 local Config = require(Shared.Config)
+local Format = require(Shared.Format)
 local Remotes = require(Shared.Remotes)
+local Stats = require(Shared.Stats)
 
 local UIFolder = script.Parent.Parent.UI
 local Theme = require(UIFolder.Theme)
 local UI = require(UIFolder.UI)
 local Router = require(UIFolder.Router)
-local Common = require(script.Parent.Common)
 
 local C = Theme.Color
+local player = Players.LocalPlayer
 
 local Tab = { title = "Map" }
 
-local selectedFloor: number? = nil
+local COLS = 4
 
-local function stateOf(data: any, id: number): string
-	if data.currentFloor == id then
-		return "Here"
-	elseif data.clearedFloors[id] then
-		return "Cleared"
-	elseif data.unlockedFloors[id] then
-		return "Open"
+function Tab.render(content: Frame, data: any, _ctx: any)
+	local entries = { { code = "Store", name = "Your Store", bounty = 0 } }
+	for _, def in Config.DISTRICTS do
+		table.insert(entries, { code = def.code, name = def.name, bounty = def.bounty })
 	end
-	return "Locked"
-end
-
-function Tab.render(content: Frame, data: any, ctx: any)
-	local _, left, right = Common.columns(content, 0.5)
-	selectedFloor = selectedFloor or data.currentFloor or 1
-
-	local frontLine = Workspace:GetAttribute("FrontLine")
-	local header = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 26), Parent = left })
-	UI.caption("Floors", { Parent = header })
-	UI.chip("FRONT LINE " .. Config.floorCode(if typeof(frontLine) == "number" then frontLine else 1), C.Lantern, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.fromScale(1, 0),
-		Parent = header,
-	})
-
-	local scroll = ctx.scroll("map", { Position = UDim2.fromOffset(0, 36), Size = UDim2.new(1, 0, 1, -36), Parent = left })
-	UI.list(Enum.FillDirection.Vertical, 0).Parent = scroll
-
-	for i, def in Config.FLOORS do
-		local state = stateOf(data, def.id)
-		local row = UI.row(def.id, def.name, state, function()
-			selectedFloor = def.id
-			ctx.rerender()
-		end, { LayoutOrder = i, Parent = scroll })
-		local title = row:FindFirstChild("Title") :: TextLabel
-		local rightLabel = row:FindFirstChild("Right") :: TextLabel
-		if state == "Locked" then
-			title.TextTransparency = Theme.TextFaint
-			rightLabel.TextTransparency = Theme.TextFaint
-		elseif state == "Here" then
-			rightLabel.TextColor3 = C.Lantern
-		end
-		UI.setRowSelected(row, def.id == selectedFloor)
-	end
-	local last = Config.FLOORS[#Config.FLOORS]
-	if last and last.id < Config.TOTAL_FLOORS then
-		local beyond = UI.row(last.id + 1, string.format("Floors %02d to %d", last.id + 1, Config.TOTAL_FLOORS), "Unbuilt", nil, {
-			LayoutOrder = 999,
-			Parent = scroll,
-			Selectable = false,
+	local rows = math.ceil(#entries / COLS)
+	for i, e in entries do
+		local col = (i - 1) % COLS
+		local row = math.floor((i - 1) / COLS)
+		local here = player:GetAttribute("Area") == e.code or (e.code == "Store" and player:GetAttribute("Area") == nil)
+		local open = e.code == "Store" or Stats.districtUnlocked(data, e.code)
+		local cleared = data.bossesBeaten and data.bossesBeaten[e.code]
+		local card = UI.panel({
+			Position = UDim2.new(col / COLS, 0, row / rows, 0),
+			Size = UDim2.new(1 / COLS, -14, 1 / rows, -14),
+			Parent = content,
+		}, {
+			color = if here then C.Red elseif open then C.Paper else C.Tone,
+			tone = if open then "BR" else nil,
 		})
-		local beyondTitle = beyond:FindFirstChild("Title") :: TextLabel
-		beyondTitle.TextTransparency = Theme.TextFaint
-	end
-
-	-- Detail
-	local col = Common.stack(right, 8)
-	local def = Config.getFloor(selectedFloor or 1)
-	if not def then
-		return
-	end
-	local state = stateOf(data, def.id)
-	local known = state ~= "Locked"
-
-	UI.text(Config.floorCode(def.id), "monoBold", Theme.TextSize.Title, { TextColor3 = C.Lantern, LayoutOrder = 1, Parent = col })
-	UI.displayText(def.name, Theme.TextSize.Heading, { LayoutOrder = 2, TextWrapped = true, AutomaticSize = Enum.AutomaticSize.Y, Parent = col })
-	Common.kv(col, "Town", def.town, 3)
-	Common.kv(col, "Biome", def.biome, 4)
-	Common.kv(col, "Floor boss", if known then def.boss.name else "Unknown", 5, if known then C.Ember else nil)
-	Common.kv(col, "Milestone", if def.milestone then "Yes" else "No", 6)
-	Common.kv(col, "State", state, 7)
-
-	local actions = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 38), LayoutOrder = 10, Parent = col })
-	local travel = UI.button(if state == "Here" then "You are here" else "Travel to " .. def.town, "primary", function()
-		Remotes.event("TravelToFloor"):FireServer(def.id)
-		Router.close()
-	end, { Size = UDim2.fromScale(1, 1), Parent = actions })
-	UI.setDisabled(travel, state == "Here" or state == "Locked")
-	if state == "Locked" then
-		Common.note(col, "Clear the floor below to open this gate.", 11)
+		local ink = if here then C.Paper else C.Ink
+		UI.text(if e.code == "Store" then "HOME" else e.code, "monoBold", Theme.TextSize.Caption, {
+			Position = UDim2.fromOffset(12, 10),
+			Size = UDim2.new(1, -24, 0, 18),
+			TextColor3 = ink,
+			Parent = card,
+		})
+		UI.text(string.upper(e.name), "display", Theme.TextSize.Heading, {
+			Position = UDim2.fromOffset(12, 28),
+			Size = UDim2.new(1, -24, 0, 56),
+			TextWrapped = true,
+			TextYAlignment = Enum.TextYAlignment.Top,
+			TextColor3 = ink,
+			Parent = card,
+		})
+		if cleared then
+			UI.sticker("CLEARED", C.Ink, C.Paper, { AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, -8, 0, 6), Rotation = 6, Parent = card })
+		end
+		if here then
+			UI.text("YOU ARE HERE", "display", Theme.TextSize.Label, {
+				AnchorPoint = Vector2.new(0, 1),
+				Position = UDim2.new(0, 12, 1, -14),
+				Size = UDim2.new(1, -24, 0, 26),
+				TextColor3 = C.Paper,
+				Parent = card,
+			})
+		elseif open then
+			UI.bigButton("GO!", "primary", function()
+				Remotes.event("TravelToDistrict"):FireServer(e.code)
+				Router.close()
+			end, { AnchorPoint = Vector2.new(0, 1), Position = UDim2.new(0, 12, 1, -10), Size = UDim2.new(1, -24, 0, 50), Parent = card })
+		else
+			UI.text("LOCKED", "display", Theme.TextSize.Label, {
+				AnchorPoint = Vector2.new(0, 1),
+				Position = UDim2.new(0, 12, 1, -36),
+				Size = UDim2.new(1, -24, 0, 22),
+				TextTransparency = Theme.TextDim,
+				Parent = card,
+			})
+			UI.text("BOUNTY " .. Format.commas(e.bounty), "monoBold", Theme.TextSize.Caption, {
+				AnchorPoint = Vector2.new(0, 1),
+				Position = UDim2.new(0, 12, 1, -14),
+				Size = UDim2.new(1, -24, 0, 18),
+				Parent = card,
+			})
+		end
 	end
 end
 

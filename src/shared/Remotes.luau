@@ -13,14 +13,23 @@ local FOLDER_NAME = "Remotes"
 local EVENTS = {
 	"Snapshot", -- S->C  full profile mirror after any change
 	"Toast", -- S->C  { kind, title, body, rarity? }
-	"Banner", -- S->C  { kind = "FloorCleared" | "BossIntro", ... }
-	"OpenLedger", -- S->C  tab name (from a world prompt such as a teleport gate)
+	"Banner", -- S->C  { kind = "DistrictCleared" | "BossIntro" | "Knockout" | "Serious", ... }
+	"OpenLedger", -- S->C  tab name (from a world prompt)
+	"CombatFx", -- S->All { kind, attacker, targets, pos, prop?, ... } cosmetic only
+	"Attack", -- C->S  (kind: "light" | "heavy")
+	"Grab", -- C->S  (prop: BasePart?) nil = drop the held prop
+	"Throw", -- C->S  (aimPoint: Vector3)
+	"Dodge", -- C->S  ()
+	"Parry", -- C->S  ()
+	"GoSerious", -- C->S  ()
 	"AllocateStat", -- C->S  (statKey, amount)
 	"SetSetting", -- C->S  (key, value)
 	"QuestAction", -- C->S  (action: "accept" | "abandon" | "track", questId)
-	"TravelToFloor", -- C->S  (floorId)
-	"EquipItem", -- C->S  (uid | nil, slot)
+	"TravelToDistrict", -- C->S  (code) or "Store"
+	"StoreAction", -- C->S  (action: "restock" | "restockAll" | "upgrade", arg)
 	"ClaimDaily", -- C->S  ()
+	"ClaimGift", -- C->S  (index)
+	"RedeemCode", -- C->S  (code)
 	"FunnelStep", -- C->S  (stepName) client-observed onboarding steps only
 	"AdminCommand", -- C->S  (command, args)
 	"SimulatePurchase", -- C->S  (kind: "pass" | "product", key) Studio only, for ID 0 items

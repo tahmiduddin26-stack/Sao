@@ -1,6 +1,7 @@
 --!strict
--- QuestService: accept, abandon, track and advance hand-written quests.
--- Quest data lives in Shared.Quests and is linted at boot (plan 8.2).
+-- QuestService: accept, abandon, track and advance hand-written Jobs.
+-- Job data lives in Shared.Quests and is linted at boot. Steps with an `event`
+-- advance through QuestService.notify(player, event) from gameplay services.
 -- Other systems call QuestService.advance(player, questId, stepId, amount)
 -- when the player does the thing a step asks for.
 
@@ -12,12 +13,13 @@ local Remotes = require(Shared.Remotes)
 local RateLimit = require(Shared.RateLimit)
 local Quests = require(Shared.Quests)
 local QuestLint = require(Shared.QuestLint)
+local Stats = require(Shared.Stats)
 
 local QuestService = {}
 
 local DataService: any
 local ProgressionService: any
-local InventoryService: any
+
 local Analytics: any
 
 local byId: { [string]: Quests.Quest } = {}
@@ -31,7 +33,7 @@ function QuestService.get(questId: string): Quests.Quest?
 end
 
 local function prerequisitesMet(data: any, q: Quests.Quest): boolean
-	if not data.unlockedFloors[q.floor] then
+	if not Stats.districtUnlocked(data, q.district) then
 		return false
 	end
 	for _, req in (q.requires or {}) :: { string } do
@@ -60,7 +62,7 @@ function QuestService.accept(player: Player, questId: string): boolean
 	if #data.tracked < Config.MAX_TRACKED_QUESTS then
 		table.insert(data.tracked, questId)
 	end
-	toast(player, { kind = "quest", title = "Quest accepted", body = q.name })
+	toast(player, { kind = "quest", title = "Job accepted", body = q.name })
 	Analytics.custom(player, "QuestAccepted", 1, { Archetype = q.archetype })
 	DataService.changed(player)
 	return true
@@ -111,11 +113,8 @@ end
 local function grantRewards(player: Player, q: Quests.Quest)
 	local data = DataService.get(player)
 	local r = q.rewards
-	if r.gold then
-		ProgressionService.addGold(player, r.gold, "Gameplay", q.id)
-	end
-	for _, item in (r.items or {}) :: { any } do
-		InventoryService.give(player, item.id, item.count or 1)
+	if r.cash then
+		ProgressionService.addCash(player, r.cash, "Gameplay", q.id)
 	end
 	for _, key in (r.unlocks or {}) :: { string } do
 		data.unlocks[key] = true
@@ -138,7 +137,7 @@ local function complete(player: Player, q: Quests.Quest)
 		table.remove(data.tracked, i)
 	end
 	grantRewards(player, q)
-	toast(player, { kind = "quest", title = "Quest complete", body = q.name })
+	toast(player, { kind = "quest", title = "Job done", body = q.name })
 	Analytics.funnel(player, "FirstQuestDone")
 	Analytics.custom(player, "QuestCompleted", 1, { Archetype = q.archetype })
 	DataService.changed(player)
@@ -168,15 +167,32 @@ function QuestService.advance(player: Player, questId: string, stepId: string?, 
 			complete(player, q)
 			return true
 		end
-		toast(player, { kind = "quest", title = "Quest updated", body = q.steps[s.step].text })
+		toast(player, { kind = "quest", title = "Job updated", body = q.steps[s.step].text })
 	else
-		toast(player, { kind = "quest", title = "Quest updated", body = string.format("%s %d/%d", step.text, s.progress, needed) })
+		toast(player, { kind = "quest", title = "Job updated", body = string.format("%s %d/%d", step.text, s.progress, needed) })
 	end
 	DataService.changed(player)
 	return true
 end
 
--- Record a branch choice (e.g. The Trap-Breaker) for later consequences.
+-- Gameplay event hook: advances every active Job whose current step waits on `event`.
+function QuestService.notify(player: Player, event: string, amount: number?)
+	local data = DataService.get(player)
+	if not data then
+		return
+	end
+	for questId, s in data.quests do
+		local q = byId[questId]
+		if q and s.state == "active" then
+			local step = q.steps[s.step]
+			if step and step.event == event then
+				QuestService.advance(player, questId, step.id, amount)
+			end
+		end
+	end
+end
+
+-- Record a branch choice for later consequences.
 function QuestService.setChoice(player: Player, questId: string, choice: string)
 	local data = DataService.get(player)
 	local s = data and data.quests[questId]
@@ -186,10 +202,10 @@ function QuestService.setChoice(player: Player, questId: string, choice: string)
 	end
 end
 
-function QuestService.init(dataService: any, progressionService: any, inventoryService: any, analytics: any)
+function QuestService.init(dataService: any, progressionService: any, analytics: any)
 	DataService = dataService
 	ProgressionService = progressionService
-	InventoryService = inventoryService
+
 	Analytics = analytics
 
 	for _, q in Quests do

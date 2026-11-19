@@ -30,7 +30,7 @@ function Format.index(i: number): string
 	return string.format("%02d", i)
 end
 
--- "One-handed sword" style sentence case for keys like "OneHandedSword"
+-- "Guard break" style sentence case for keys like "GuardBreak"
 function Format.splitCamel(s: string): string
 	local spaced = s:gsub("(%l)(%u)", "%1 %2")
 	return spaced:sub(1, 1):upper() .. spaced:sub(2):lower()

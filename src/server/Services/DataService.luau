@@ -41,31 +41,19 @@ local JOB_ID = (RunService:IsStudio() and "studio-" or "") .. (game.JobId ~= "" 
 ---------------------------------------------------------------------------
 -- Defaults and reconcile
 ---------------------------------------------------------------------------
-local function newUid(): string
-	return HttpService:GenerateGUID(false)
-end
 
 function DataService.defaultData(): any
 	local stats = {}
 	for _, def in Config.STATS do
 		stats[def.key] = 0
 	end
-	local proficiency = {}
-	for _, def in Config.PROFICIENCIES do
-		proficiency[def.key] = 0
+	local mastery = {}
+	for _, key in Config.CLASS_ORDER do
+		mastery[key] = 0 -- knockouts landed with each prop class
 	end
-
-	local items = {}
-	local equipped = {}
-	for _, itemId in Config.STARTER_ITEMS do
-		local uid = newUid()
-		local def = (Config.ITEMS :: any)[itemId]
-		table.insert(items, { uid = uid, id = itemId, count = 1, durability = def and def.durability or nil })
-		for slot, starterId in Config.STARTER_EQUIP do
-			if starterId == itemId then
-				equipped[slot] = uid
-			end
-		end
+	local stock = {}
+	for _, shelf in Config.SHELVES do
+		stock[shelf.key] = if shelf.unlockLevel == 0 then Config.SHELF_CAPACITY else 0
 	end
 
 	return {
@@ -74,24 +62,24 @@ function DataService.defaultData(): any
 		xp = 0,
 		statPoints = 0,
 		stats = stats,
-		proficiency = proficiency,
-		gold = Config.STARTING_GOLD,
-		materials = { Crystal = 0 },
-		items = items,
-		equipped = equipped,
-		currentFloor = 1,
-		unlockedFloors = { [1] = true },
-		clearedFloors = {},
+		mastery = mastery,
+		cash = Config.STARTING_CASH,
+		bounty = 0,
+		bestBounty = 0,
+		kos = 0,
+		bossesBeaten = {}, -- [districtCode] = true
+		store = { level = 0, stock = stock, sales = 0 },
 		quests = {}, -- [questId] = { state = "active" | "done", step = number, progress = number, choice = string? }
 		tracked = {}, -- { questId }
 		unlocks = {}, -- [unlockKey] = true
 		titles = {},
 		activeTitle = "",
 		daily = { lastDay = -1, streak = 0 },
+		codes = {}, -- [CODE] = true once redeemed
 		settings = table.clone(Config.DEFAULT_SETTINGS),
 		funnel = {}, -- [stepName] = true
 		passes = {}, -- [passKey] = true (granted, including Studio simulations)
-		tokens = { Revive = 0, Dye = 0 },
+		tokens = { BountyShield = 0 },
 		receipts = {}, -- { purchaseId }
 		stats_meta = { createdAt = os.time(), sessions = 0, playSeconds = 0 },
 	}
@@ -109,20 +97,6 @@ local function reconcile(target: any, template: any)
 	end
 end
 
--- JSON turns sparse integer keys into strings; normalise floor sets back to numbers.
-local function normaliseNumberSet(t: any): any
-	local out = {}
-	if typeof(t) ~= "table" then
-		return out
-	end
-	for k, v in t do
-		local n = tonumber(k)
-		if n and v then
-			out[n] = true
-		end
-	end
-	return out
-end
 
 ---------------------------------------------------------------------------
 -- DataStore helpers
@@ -177,18 +151,6 @@ local function buildSnapshot(player: Player, session: Session): any
 	local snap = table.clone(d)
 	snap.receipts = nil
 	snap.funnel = nil
-	-- Floor sets go over the wire as arrays so number keys survive.
-	local unlocked, cleared = {}, {}
-	for id in d.unlockedFloors do
-		table.insert(unlocked, id)
-	end
-	for id in d.clearedFloors do
-		table.insert(cleared, id)
-	end
-	table.sort(unlocked)
-	table.sort(cleared)
-	snap.unlockedFloors = unlocked
-	snap.clearedFloors = cleared
 	snap.canSave = session.canSave
 	return snap
 end
@@ -301,22 +263,8 @@ local function loadProfile(player: Player): (any?, boolean)
 	return nil, false
 end
 
--- DataStores reject sparse number-keyed tables, so floor sets are written
--- with string keys. normaliseNumberSet turns them back into numbers on load.
-local function toStringSet(t: any): any
-	local out = {}
-	for k, v in t do
-		if v then
-			out[tostring(k)] = true
-		end
-	end
-	return out
-end
-
 local function serialise(data: any): any
 	local copy = table.clone(data)
-	copy.unlockedFloors = toStringSet(data.unlockedFloors)
-	copy.clearedFloors = toStringSet(data.clearedFloors)
 	return copy
 end
 
@@ -391,11 +339,6 @@ local function onPlayerAdded(player: Player)
 
 	if ok and data then
 		reconcile(data, DataService.defaultData())
-		data.unlockedFloors = normaliseNumberSet(data.unlockedFloors)
-		data.clearedFloors = normaliseNumberSet(data.clearedFloors)
-		if next(data.unlockedFloors) == nil then
-			data.unlockedFloors[1] = true
-		end
 		data.stats_meta.sessions += 1
 		session.data = data
 	else

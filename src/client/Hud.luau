@@ -1,11 +1,12 @@
 --!strict
--- Hud: always-on screen elements (plan 24).
---  * Player plate (top left): name, level, HP with numbers, SP in 4 segments, thin MP bar.
---  * Minimap (top right): floor code in mono, town name, player dot.
---  * Menu button (top right, also the touch entry to the Ledger).
---  * Quest tracker (right): two tracked quests at most.
---  * Daily streak and server blessing chips under the plate.
--- The skill bar, Connect ring, party frames and boss bar arrive with combat.
+-- Hud: always-on screen elements, drawn as comic panels with ink shadows.
+--  * Player panel (top left): name, level badge, HP, Focus. While Serious the
+--    Focus bar is a red countdown; a red "R" pops up when Focus is full.
+--  * Stickers under it: Cash and bounty. Big CLAIM / GIFT buttons when ready.
+--  * Area title (top right): a brush-stroke label of where you are, plus MENU.
+--  * Job panel (right): your first tracked Job, one line and a bar.
+--  * Hands panel (bottom centre): what you are holding, durability pips and
+--    key caps for what you can do with it.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -20,7 +21,6 @@ local Remotes = require(Shared.Remotes)
 
 local Theme = require(script.Parent.UI.Theme)
 local UI = require(script.Parent.UI.UI)
-local Motion = require(script.Parent.UI.Motion)
 local Router = require(script.Parent.UI.Router)
 local State = require(script.Parent.State)
 
@@ -34,68 +34,84 @@ for _, q in Quests do
 	questById[q.id] = q
 end
 
+local function serverNow(): number
+	return Workspace:GetServerTimeNow()
+end
+
 ---------------------------------------------------------------------------
--- Player plate
+-- Player panel
 ---------------------------------------------------------------------------
-local plate: Frame
 local nameLabel: TextLabel
-local levelLabel: TextLabel
+local levelBadge: TextLabel
 local hpBar: UI.Bar
 local hpText: TextLabel
-local setSp: (number) -> ()
-local mpBar: UI.Bar
+local focusBar: UI.Bar
+local focusLabel: TextLabel
+local seriousKey: TextLabel
 
-local function buildPlate(root: Frame)
-	plate = UI.plate({
-		Name = "PlayerPlate",
+local function buildPlayer(root: Frame)
+	local panel = UI.panel({
+		Name = "PlayerPanel",
 		Position = UDim2.fromOffset(24, 24),
-		Size = UDim2.fromOffset(300, 86),
+		Size = UDim2.fromOffset(330, 108),
 		Parent = root,
-	}, { UI.padding(10, 12) })
+	}, { tone = "TR" })
 
-	nameLabel = UI.text(player.DisplayName, "bold", Theme.TextSize.Label, {
-		Size = UDim2.new(1, -70, 0, 20),
+	levelBadge = UI.text("1", "display", Theme.TextSize.Title, {
+		Position = UDim2.fromOffset(12, 10),
+		Size = UDim2.fromOffset(44, 44),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		BackgroundColor3 = C.Red,
+		BackgroundTransparency = 0,
+		TextColor3 = C.Paper,
+		Rotation = -4,
+		Parent = panel,
+	}, nil)
+	UI.stroke(C.Line).Parent = levelBadge
+	nameLabel = UI.text(string.upper(player.DisplayName), "display", Theme.TextSize.Heading, {
+		Position = UDim2.fromOffset(66, 10),
+		Size = UDim2.new(1, -78, 0, 26),
 		TextTruncate = Enum.TextTruncate.AtEnd,
-		Parent = plate,
-	})
-	levelLabel = UI.text("LV 1", "mono", Theme.TextSize.Caption, {
-		Size = UDim2.fromOffset(70, 20),
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.fromScale(1, 0),
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextTransparency = 0.2,
-		Parent = plate,
+		Parent = panel,
 	})
 
-	hpBar = UI.bar(C.Vigor, 8, true, { Position = UDim2.fromOffset(0, 26), Size = UDim2.new(1, -96, 0, 8), Parent = plate })
-	hpText = UI.text("0/0", "mono", Theme.TextSize.Caption, {
+	hpBar = UI.bar(C.Ink, 16, true, { Position = UDim2.fromOffset(66, 40), Size = UDim2.new(1, -150, 0, 16), Parent = panel })
+	UI.stroke(C.Line).Parent = hpBar.frame
+	hpText = UI.text("0", "monoBold", Theme.TextSize.Caption, {
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 20),
-		Size = UDim2.fromOffset(90, 20),
+		Position = UDim2.new(1, -12, 0, 38),
+		Size = UDim2.fromOffset(72, 20),
 		TextXAlignment = Enum.TextXAlignment.Right,
-		Parent = plate,
+		Parent = panel,
 	})
 
-	local _, setter = UI.segments(Config.SP_SEGMENTS, C.Lantern, 4, { Position = UDim2.fromOffset(0, 42), Size = UDim2.new(1, -96, 0, 4), Parent = plate })
-	setSp = setter
-	UI.text("SP", "mono", Theme.TextSize.Caption, {
+	focusBar = UI.bar(C.Red, 14, false, { Position = UDim2.fromOffset(66, 70), Size = UDim2.new(1, -150, 0, 14), Parent = panel })
+	UI.stroke(C.Line).Parent = focusBar.frame
+	focusBar.set(0, true)
+	focusLabel = UI.text("FOCUS", "display", Theme.TextSize.Body, {
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 34),
-		Size = UDim2.fromOffset(40, 18),
+		Position = UDim2.new(1, -12, 0, 66),
+		Size = UDim2.fromOffset(72, 22),
 		TextXAlignment = Enum.TextXAlignment.Right,
-		TextTransparency = Theme.TextDim,
-		Parent = plate,
+		Parent = panel,
 	})
+	UI.text("HP", "display", Theme.TextSize.Caption, { Position = UDim2.fromOffset(16, 62), Size = UDim2.fromOffset(40, 18), Parent = panel })
 
-	mpBar = UI.bar(C.Tide, 3, false, { Position = UDim2.fromOffset(0, 56), Size = UDim2.new(1, -96, 0, 3), Parent = plate })
-	UI.text("MP", "mono", Theme.TextSize.Caption, {
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, 0, 0, 48),
-		Size = UDim2.fromOffset(40, 18),
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextTransparency = Theme.TextDim,
-		Parent = plate,
+	-- "R" pops out of the panel edge when Serious is ready.
+	seriousKey = UI.text("R!", "display", Theme.TextSize.Title, {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(1, 4, 1, 0),
+		Size = UDim2.fromOffset(52, 52),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		BackgroundColor3 = C.Red,
+		BackgroundTransparency = 0,
+		TextColor3 = C.Paper,
+		Rotation = 8,
+		Visible = false,
+		ZIndex = 3,
+		Parent = panel,
 	})
+	UI.stroke(C.Line).Parent = seriousKey
 end
 
 local humanoidConns: { RBXScriptConnection } = {}
@@ -105,8 +121,8 @@ local function updateHp(humanoid: Humanoid, instant: boolean?)
 	local hp = math.max(0, humanoid.Health)
 	local ratio = hp / max
 	hpBar.set(ratio, instant)
-	hpBar.setColor(if ratio <= 0.3 then C.Ember else C.Vigor)
-	hpText.Text = string.format("%s/%s", Format.commas(math.ceil(hp)), Format.commas(math.ceil(max)))
+	hpBar.setColor(if ratio <= 0.3 then C.Danger else C.Ink)
+	hpText.Text = Format.commas(math.ceil(hp))
 end
 
 local function bindCharacter(character: Model)
@@ -128,217 +144,248 @@ local function bindCharacter(character: Model)
 	end))
 end
 
-local function updateResources()
-	local sp = player:GetAttribute("SP")
-	setSp(if typeof(sp) == "number" then sp else Config.SP_SEGMENTS)
-	local mp = player:GetAttribute("MP")
-	local maxMp = player:GetAttribute("MaxMP")
-	if typeof(mp) == "number" and typeof(maxMp) == "number" and maxMp > 0 then
-		mpBar.set(mp / maxMp)
+local function updateFocus()
+	local untilTime = player:GetAttribute("SeriousUntil")
+	local remaining = if typeof(untilTime) == "number" then untilTime - serverNow() else 0
+	if remaining > 0 then
+		focusBar.set(remaining / Config.SERIOUS_SECONDS, true)
+		focusLabel.Text = string.format("%d", math.ceil(remaining))
+		focusLabel.TextColor3 = C.Red
+		seriousKey.Visible = false
+		return
 	end
+	local focus = (player:GetAttribute("Focus") :: number?) or 0
+	focusBar.set(focus / Config.FOCUS_MAX)
+	local full = focus >= Config.FOCUS_MAX
+	focusLabel.Text = if full then "READY!" else "FOCUS"
+	focusLabel.TextColor3 = if full then C.Red else C.Ink
+	seriousKey.Visible = full
 end
 
 ---------------------------------------------------------------------------
--- Chips under the plate: daily streak, server blessing
+-- Stickers and reward buttons
 ---------------------------------------------------------------------------
-local dailyChip: Frame
-local dailyText: TextLabel
-local blessingChip: TextLabel
+local cashSticker: TextLabel
+local bountySticker: TextLabel
+local dailyButton: TextButton
+local giftButton: TextButton
+local saleSticker: TextLabel
+local nextGiftIndex: number? = nil
+local giftReady = false
 
 local function today(): number
 	return math.floor(os.time() / 86400)
 end
 
-local function buildChips(root: Frame)
+local function buildStickers(root: Frame)
 	local column = UI.new("Frame", {
-		Name = "Chips",
+		Name = "Stickers",
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(24, 118),
-		Size = UDim2.fromOffset(300, 120),
+		Position = UDim2.fromOffset(28, 146),
+		Size = UDim2.fromOffset(330, 240),
 		Parent = root,
-	}, { UI.list(Enum.FillDirection.Vertical, 6) })
+	}, { UI.list(Enum.FillDirection.Vertical, 10) })
 
-	dailyChip = UI.plate({
-		Name = "Daily",
-		Size = UDim2.fromOffset(300, 44),
-		Visible = false,
-		LayoutOrder = 1,
-		Parent = column,
-	}, { UI.padding(0, 12) })
-	dailyText = UI.text("Daily streak ready", "body", Theme.TextSize.Body, { Size = UDim2.new(1, -90, 1, 0), Parent = dailyChip })
-	UI.button("Claim", "primary", function()
-		Remotes.event("ClaimDaily"):FireServer()
-	end, {
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, 0, 0.5, 0),
-		Size = UDim2.fromOffset(80, 30),
-		Parent = dailyChip,
+	local money = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.fromOffset(330, 34), LayoutOrder = 1, Parent = column }, {
+		UI.list(Enum.FillDirection.Horizontal, 10),
 	})
+	cashSticker = UI.sticker("$0", C.Paper, C.Ink, { LayoutOrder = 1, Parent = money })
+	bountySticker = UI.sticker("BOUNTY 0", C.Ink, C.Paper, { LayoutOrder = 2, Rotation = 2, Parent = money })
 
-	blessingChip = UI.chip("", C.Lantern, { Visible = false, LayoutOrder = 2, Parent = column })
+	dailyButton = UI.bigButton("DAILY REWARD!", "primary", function()
+		Remotes.event("ClaimDaily"):FireServer()
+	end, { Size = UDim2.fromOffset(220, 50), LayoutOrder = 2, Visible = false, Parent = column })
+
+	giftButton = UI.bigButton("GIFT", "secondary", function()
+		if nextGiftIndex and giftReady then
+			Remotes.event("ClaimGift"):FireServer(nextGiftIndex)
+		end
+	end, { Size = UDim2.fromOffset(220, 50), LayoutOrder = 3, Visible = false, Parent = column })
+
+	saleSticker = UI.sticker("", C.Red, C.Paper, { LayoutOrder = 4, Visible = false, Parent = column })
 end
 
-local function updateBlessing()
-	local untilTime = Workspace:GetAttribute("BlessingUntil")
-	local stacks = Workspace:GetAttribute("BlessingStacks")
+local function updateMoney(data: any)
+	cashSticker.Text = Config.CURRENCY_CODE .. Format.commas(data.cash or 0)
+	bountySticker.Text = "BOUNTY " .. Format.commas(data.bounty or 0)
+end
+
+local function updateGifts()
+	local started = player:GetAttribute("SessionStart")
+	local mask = (player:GetAttribute("GiftsClaimed") :: number?) or 0
+	if typeof(started) ~= "number" then
+		UI.show(giftButton, false)
+		return
+	end
+	nextGiftIndex = nil
+	for i in Config.PLAYTIME_GIFTS do
+		if math.floor(mask / 2 ^ (i - 1)) % 2 == 0 then
+			nextGiftIndex = i
+			break
+		end
+	end
+	if not nextGiftIndex then
+		UI.show(giftButton, false)
+		return
+	end
+	local gift = Config.PLAYTIME_GIFTS[nextGiftIndex]
+	local remaining = gift.minutes * 60 - (serverNow() - started)
+	UI.show(giftButton, true)
+	giftReady = remaining <= 0
+	if giftReady then
+		giftButton.Text = "OPEN GIFT!"
+		giftButton.BackgroundColor3 = C.Red
+		giftButton.TextColor3 = C.Paper
+	else
+		giftButton.Text = "GIFT IN " .. Format.clock(remaining)
+		giftButton.BackgroundColor3 = C.Paper
+		giftButton.TextColor3 = C.Ink
+	end
+end
+
+local function updateSale()
+	local untilTime = Workspace:GetAttribute("BigSaleUntil")
+	local stacks = Workspace:GetAttribute("BigSaleStacks")
 	local remaining = if typeof(untilTime) == "number" then untilTime - os.time() else 0
 	if remaining > 0 and typeof(stacks) == "number" then
-		local mult = 1 + Config.BLESSING_XP_MULT_PER_STACK * math.min(stacks, Config.BLESSING_MAX_STACKS)
-		blessingChip.Text = string.format("XP x%.2f  %s", mult, Format.clock(remaining))
-		blessingChip.Visible = true
+		local mult = 1 + Config.BIG_SALE_MULT_PER_STACK * math.min(stacks, Config.BIG_SALE_MAX_STACKS)
+		saleSticker.Text = string.format("BIG SALE x%d CASH  %s", mult, Format.clock(remaining))
+		saleSticker.Visible = true
 	else
-		blessingChip.Visible = false
+		saleSticker.Visible = false
 	end
 end
 
 ---------------------------------------------------------------------------
--- Minimap and menu button
+-- Area title and menu button
 ---------------------------------------------------------------------------
-local floorCodeLabel: TextLabel
-local townLabel: TextLabel
-local dot: Frame
+local areaTitle: Frame
 
-local function buildMinimap(root: Frame)
-	local map = UI.plate({
-		Name = "Minimap",
-		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -24, 0, 24),
-		Size = UDim2.fromOffset(200, 150),
-		Parent = root,
-	}, { UI.padding(8) })
-	local field = UI.block(C.Ink, { Name = "Field", Size = UDim2.new(1, 0, 1, -24), BackgroundTransparency = 0.2, ClipsDescendants = true, Parent = map })
-	-- Town plaza marker and labyrinth gate (lantern) for orientation.
-	UI.block(C.Rule, { Name = "Plaza", AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(16, 16), Parent = field })
-	UI.new("Frame", {
-		Name = "Labyrinth",
-		BackgroundTransparency = 1,
-		AnchorPoint = Vector2.new(0.5, 0.5),
-		Position = UDim2.fromScale(0.5, 0.12),
-		Size = UDim2.fromOffset(10, 10),
-		Parent = field,
-	}, { UI.stroke(C.Lantern) })
-	dot = UI.block(C.Bone, { Name = "Player", AnchorPoint = Vector2.new(0.5, 0.5), Size = UDim2.fromOffset(5, 5), Position = UDim2.fromScale(0.5, 0.5), Parent = field })
-
-	floorCodeLabel = UI.text("F01", "monoBold", Theme.TextSize.Caption, {
-		AnchorPoint = Vector2.new(0, 1),
-		Position = UDim2.fromScale(0, 1),
-		Size = UDim2.new(0.4, 0, 0, 18),
-		TextColor3 = C.Lantern,
-		Parent = map,
-	})
-	townLabel = UI.text("", "body", Theme.TextSize.Caption, {
-		AnchorPoint = Vector2.new(1, 1),
-		Position = UDim2.fromScale(1, 1),
-		Size = UDim2.new(0.6, 0, 0, 18),
-		TextXAlignment = Enum.TextXAlignment.Right,
-		TextTruncate = Enum.TextTruncate.AtEnd,
-		Parent = map,
-	})
-
-	-- Menu button: 44px touch target. Three hairlines as the icon.
-	local menu = UI.button("", "ghost", function()
+local function buildArea(root: Frame)
+	UI.bigButton("MENU", "secondary", function()
 		Router.toggle("Ledger")
 	end, {
 		Name = "MenuButton",
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -232, 0, 24),
-		Size = UDim2.fromOffset(Theme.TouchMin, Theme.TouchMin),
-		BackgroundColor3 = C.Steel,
-		BackgroundTransparency = Theme.panelTransparency(),
+		Position = UDim2.new(1, -24, 0, 24),
+		Size = UDim2.fromOffset(110, 56),
+		TextSize = Theme.TextSize.Title,
 		Parent = root,
 	})
-	UI.stroke(C.Rule).Parent = menu
-	for i = 0, 2 do
-		UI.block(C.Bone, {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, 0, 0.5, (i - 1) * 6),
-			Size = UDim2.fromOffset(16, 2),
-			Parent = menu,
-		})
-	end
-end
-
-local function updateMinimap(data: any)
-	local floorId = data.currentFloor or 1
-	local def = Config.getFloor(floorId)
-	floorCodeLabel.Text = Config.floorCode(floorId)
-	townLabel.Text = def and def.town or ""
-end
-
-local function updateDot()
-	local character = player.Character
-	local root = character and character:FindFirstChild("HumanoidRootPart") :: BasePart?
-	local data = State.data
-	if not root or not data then
-		return
-	end
-	local def = Config.getFloor(data.currentFloor or 1)
-	if not def then
-		return
-	end
-	local origin = Vector3.new((def.id - 1) * Config.FLOOR_SPACING, 0, 0)
-	local rel = root.Position - origin
-	local x = math.clamp(0.5 + rel.X / def.size.X, 0, 1)
-	local y = math.clamp(0.5 + rel.Z / def.size.Y, 0, 1)
-	dot.Position = UDim2.fromScale(x, y)
-end
-
----------------------------------------------------------------------------
--- Quest tracker
----------------------------------------------------------------------------
-local tracker: Frame
-local trackerList: Frame
-
-local function buildTracker(root: Frame)
-	tracker = UI.plate({
-		Name = "Tracker",
+	areaTitle = UI.brushTitle("Your store", Theme.TextSize.Title, {
 		AnchorPoint = Vector2.new(1, 0),
-		Position = UDim2.new(1, -24, 0, 186),
-		Size = UDim2.fromOffset(280, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
+		Position = UDim2.new(1, -150, 0, 30),
+		Parent = root,
+	})
+end
+
+local function updateArea()
+	local area = player:GetAttribute("Area")
+	if area == "Store" or area == nil then
+		UI.setBrushText(areaTitle, "Your store")
+		return
+	end
+	local def = Config.getDistrict(area :: string)
+	UI.setBrushText(areaTitle, if def then def.name else tostring(area))
+end
+
+---------------------------------------------------------------------------
+-- Job panel: the first tracked Job, one line and a bar.
+---------------------------------------------------------------------------
+local jobPanel: Frame
+local jobName: TextLabel
+local jobStep: TextLabel
+local jobBar: UI.Bar
+
+local function buildJob(root: Frame)
+	jobPanel = UI.panel({
+		Name = "Job",
+		AnchorPoint = Vector2.new(1, 0),
+		Position = UDim2.new(1, -24, 0, 100),
+		Size = UDim2.fromOffset(300, 104),
 		Visible = false,
 		Parent = root,
-	}, { UI.padding(10, 12), UI.list(Enum.FillDirection.Vertical, 6) })
-	UI.caption("Tracked", { LayoutOrder = 0, Parent = tracker })
-	trackerList = UI.new("Frame", {
-		BackgroundTransparency = 1,
-		Size = UDim2.new(1, 0, 0, 0),
-		AutomaticSize = Enum.AutomaticSize.Y,
-		LayoutOrder = 1,
-		Parent = tracker,
-	}, { UI.list(Enum.FillDirection.Vertical, 8) })
+	})
+	UI.text("JOB", "monoBold", Theme.TextSize.Caption, { Position = UDim2.fromOffset(12, 8), Size = UDim2.fromOffset(60, 16), TextColor3 = C.Red, Parent = jobPanel })
+	jobName = UI.text("", "display", Theme.TextSize.Heading, {
+		Position = UDim2.fromOffset(12, 22),
+		Size = UDim2.new(1, -24, 0, 26),
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = jobPanel,
+	})
+	jobStep = UI.text("", "bold", Theme.TextSize.Body, {
+		Position = UDim2.fromOffset(12, 48),
+		Size = UDim2.new(1, -24, 0, 22),
+		TextTruncate = Enum.TextTruncate.AtEnd,
+		Parent = jobPanel,
+	})
+	jobBar = UI.bar(C.Red, 10, false, { Position = UDim2.fromOffset(12, 76), Size = UDim2.new(1, -24, 0, 10), Parent = jobPanel })
+	UI.stroke(C.Line).Parent = jobBar.frame
 end
 
-local function updateTracker(data: any)
-	UI.clear(trackerList)
-	local shown = 0
-	for i, questId in data.tracked or {} do
+local function updateJob(data: any)
+	local shown = false
+	for _, questId in data.tracked or {} do
 		local q = questById[questId]
 		local s = data.quests and data.quests[questId]
 		if q and s and s.state == "active" then
-			shown += 1
 			local step = q.steps[s.step]
-			local entry = UI.new("Frame", {
-				BackgroundTransparency = 1,
-				Size = UDim2.new(1, 0, 0, 0),
-				AutomaticSize = Enum.AutomaticSize.Y,
-				LayoutOrder = i,
-				Parent = trackerList,
-			}, { UI.list(Enum.FillDirection.Vertical, 0) })
-			UI.text(q.name, "bold", Theme.TextSize.Body, { LayoutOrder = 1, TextTruncate = Enum.TextTruncate.AtEnd, Parent = entry })
-			if step then
-				local needed = step.count or 1
-				local progress = if needed > 1 then string.format("  %d/%d", s.progress or 0, needed) else ""
-				UI.paragraph(step.text .. progress, {
-					LayoutOrder = 2,
-					TextSize = Theme.TextSize.Caption,
-					TextTransparency = Theme.TextDim,
-					Parent = entry,
-				})
-			end
+			local needed = step and step.count or 1
+			jobName.Text = string.upper(q.name)
+			jobStep.Text = if step then (if needed > 1 then string.format("%s  %d/%d", step.text, s.progress or 0, needed) else step.text) else ""
+			jobBar.set(((s.step - 1) + (s.progress or 0) / needed) / #q.steps, true)
+			shown = true
+			break
 		end
 	end
-	tracker.Visible = shown > 0 and not Router.isOpen()
+	UI.show(jobPanel, shown and not Router.isOpen())
+end
+
+---------------------------------------------------------------------------
+-- Hands panel
+---------------------------------------------------------------------------
+local handsName: TextLabel
+local handsPips: Frame
+local handsKeys: Frame
+local handsHolder: Frame
+
+local function buildHands(root: Frame)
+	local panel = UI.panel({
+		Name = "Hands",
+		AnchorPoint = Vector2.new(0.5, 1),
+		Position = UDim2.new(0.5, 0, 1, -20),
+		Size = UDim2.fromOffset(380, 92),
+		Parent = root,
+	}, { tone = "BL" })
+	handsHolder = panel
+	handsName = UI.text("FISTS", "display", Theme.TextSize.Title, {
+		Position = UDim2.fromOffset(14, 8),
+		Size = UDim2.new(1, -28, 0, 30),
+		TextXAlignment = Enum.TextXAlignment.Center,
+		Parent = panel,
+	})
+	handsPips = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(40, 40), Size = UDim2.new(1, -80, 0, 12), Parent = panel })
+	handsKeys = UI.new("Frame", { BackgroundTransparency = 1, Position = UDim2.fromOffset(14, 60), Size = UDim2.new(1, -28, 0, 22), Parent = panel })
+end
+
+local function updateHands()
+	local id = player:GetAttribute("Holding")
+	local def = if typeof(id) == "string" then Config.PROPS[id] else nil
+	UI.clear(handsPips)
+	UI.clear(handsKeys)
+	if not def then
+		handsName.Text = "FISTS"
+		local hints = UI.keyHints({ { "CLICK", "PUNCH" }, { "E", "GRAB STUFF" } }, { Parent = handsKeys })
+		hints:FindFirstChildOfClass("UIListLayout").HorizontalAlignment = Enum.HorizontalAlignment.Center
+		return
+	end
+	handsName.Text = string.upper(def.name) .. (if player:GetAttribute("Sling") then "  +SLING" else "")
+	local dur = (player:GetAttribute("HeldDurability") :: number?) or def.durability
+	local pips = math.min(def.durability, 10)
+	local filled = math.ceil(dur / math.max(1, def.durability) * pips)
+	UI.pips(pips, filled, if filled <= 2 then C.Red else C.Ink, { Size = UDim2.fromScale(1, 1), Parent = handsPips })
+	local hints = UI.keyHints({ { "CLICK", "HIT" }, { "Q", "THROW" }, { "E", "DROP" } }, { Parent = handsKeys })
+	hints:FindFirstChildOfClass("UIListLayout").HorizontalAlignment = Enum.HorizontalAlignment.Center
 end
 
 ---------------------------------------------------------------------------
@@ -346,54 +393,50 @@ end
 ---------------------------------------------------------------------------
 function Hud.init(root: Frame)
 	local hud = UI.new("Frame", { Name = "Hud", BackgroundTransparency = 1, Size = UDim2.fromScale(1, 1), Parent = root })
-	buildPlate(hud)
-	buildChips(hud)
-	buildMinimap(hud)
-	buildTracker(hud)
+	buildPlayer(hud)
+	buildStickers(hud)
+	buildArea(hud)
+	buildJob(hud)
+	buildHands(hud)
 
 	if player.Character then
 		task.spawn(bindCharacter, player.Character)
 	end
 	player.CharacterAdded:Connect(bindCharacter)
 
-	for _, attr in { "SP", "MP", "MaxMP" } do
-		player:GetAttributeChangedSignal(attr):Connect(updateResources)
+	for _, attr in { "Holding", "HeldDurability", "Sling" } do
+		player:GetAttributeChangedSignal(attr):Connect(updateHands)
 	end
-	updateResources()
+	player:GetAttributeChangedSignal("Area"):Connect(updateArea)
+	updateHands()
+	updateArea()
 
 	State.observe(function(data)
-		levelLabel.Text = "LV " .. tostring(data.level or 1)
-		nameLabel.Text = if data.activeTitle and data.activeTitle ~= "" then player.DisplayName .. "  " .. data.activeTitle else player.DisplayName
-		local claimable = data.daily and data.daily.lastDay ~= today()
-		dailyChip.Visible = claimable == true
-		if claimable then
-			dailyText.Text = string.format("Day %d streak ready", ((data.daily.lastDay == today() - 1) and data.daily.streak or 0) + 1)
-		end
-		updateMinimap(data)
-		updateTracker(data)
+		levelBadge.Text = tostring(data.level or 1)
+		nameLabel.Text = string.upper(player.DisplayName)
+		UI.show(dailyButton, data.daily ~= nil and data.daily.lastDay ~= today())
+		updateMoney(data)
+		updateJob(data)
 	end)
 
-	-- Hide the tracker while a menu is open so the Ledger reads cleanly.
 	Router.Changed:Connect(function(open)
 		if open then
-			tracker.Visible = false
+			UI.show(jobPanel, false)
 		elseif State.data then
-			updateTracker(State.data)
-			if tracker.Visible then
-				Motion.enter(tracker, "small", Theme.Motion.quick)
-			end
+			updateJob(State.data)
 		end
 	end)
 
 	local acc = 0
 	RunService.Heartbeat:Connect(function(dt)
+		updateFocus()
 		acc += dt
-		if acc < 0.2 then
+		if acc < 0.25 then
 			return
 		end
 		acc = 0
-		updateDot()
-		updateBlessing()
+		updateGifts()
+		updateSale()
 	end)
 end
 

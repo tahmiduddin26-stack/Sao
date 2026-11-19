@@ -1,5 +1,5 @@
 --!strict
--- Toasts: stacked notifications (plan 26). At most 3 on screen, the rest queue.
+-- Toasts: stacked notifications. At most 3 on screen, the rest queue.
 -- Rewards outrank quest updates. Slides 8px from the right and fades in; reward
 -- toasts settle with a small overshoot. Never covers the skill bar or the player.
 
@@ -40,32 +40,29 @@ local function build(p: Payload): Frame
 	}, { UI.padding(10, 14), UI.list(Enum.FillDirection.Vertical, 2) })
 
 	if kind == "levelup" then
-		local row = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 22), Parent = plate })
-		UI.text("Level up", "bold", Theme.TextSize.Label, { Parent = row })
-		UI.text(string.format("%d > %d", p.from or 0, p.to or 0), "monoBold", Theme.TextSize.Label, {
-			TextColor3 = C.Lantern,
+		local row = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 34), Parent = plate })
+		UI.text("LEVEL UP!", "display", Theme.TextSize.Title, { Parent = row })
+		UI.text(tostring(p.to or 0), "display", Theme.TextSize.Title, {
+			TextColor3 = C.Red,
 			TextXAlignment = Enum.TextXAlignment.Right,
 			Parent = row,
 		})
 		return plate
 	end
 
-	local header = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 20), LayoutOrder = 1, Parent = plate })
+	local header = UI.new("Frame", { BackgroundTransparency = 1, Size = UDim2.new(1, 0, 0, 30), LayoutOrder = 1, Parent = plate })
 	local titleX = 0
 	if kind == "quest" then
-		UI.block(C.Lantern, { Size = UDim2.fromOffset(6, 6), Position = UDim2.new(0, 0, 0.5, -3), Parent = header })
+		UI.block(C.Red, { Size = UDim2.fromOffset(6, 6), Position = UDim2.new(0, 0, 0.5, -3), Parent = header })
 		titleX = 14
 	end
-	local titleColor = C.Bone
-	if kind == "reward" and p.rarity and Theme.Rarity[p.rarity] then
-		titleColor = Theme.Rarity[p.rarity]
-	elseif kind == "error" then
-		titleColor = C.Ember
+	local titleColor = C.Ink
+	if kind == "error" then
+		titleColor = C.Danger
+	elseif kind == "reward" or kind == "purchase" then
+		titleColor = C.Red
 	end
-	if kind == "reward" then
-		UI.caption("Reward", { Parent = plate, LayoutOrder = 0, TextColor3 = C.Lantern, TextTransparency = 0 })
-	end
-	UI.text(p.title or "", "bold", Theme.TextSize.Body, {
+	UI.text(string.upper(p.title or ""), "display", Theme.TextSize.Heading, {
 		Position = UDim2.fromOffset(titleX, 0),
 		Size = UDim2.new(1, -titleX, 1, 0),
 		TextColor3 = titleColor,
@@ -73,7 +70,7 @@ local function build(p: Payload): Frame
 		Parent = header,
 	})
 	if p.body and p.body ~= "" then
-		UI.paragraph(p.body, { LayoutOrder = 2, TextSize = Theme.TextSize.Caption, TextTransparency = Theme.TextDim, Parent = plate })
+		UI.paragraph(p.body, { LayoutOrder = 2, TextSize = Theme.TextSize.Body, TextTransparency = 0, FontFace = Theme.Font.BodyBold, Parent = plate })
 	end
 	return plate
 end

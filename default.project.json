@@ -1,5 +1,6 @@
 {
-  "name": "SwordBloxOnline",
+  "name": "ClockedOut",
+  "servePort": 23604,
   "tree": {
     "$className": "DataModel",
     "ReplicatedStorage": {
@@ -16,7 +17,8 @@
         "CharacterWalkSpeed": 16,
         "CharacterJumpPower": 50,
         "CameraMaxZoomDistance": 40,
-        "CameraMinZoomDistance": 4
+        "CameraMinZoomDistance": 4,
+        "EnableMouseLockOption": false
       },
       "StarterPlayerScripts": {
         "$className": "StarterPlayerScripts",

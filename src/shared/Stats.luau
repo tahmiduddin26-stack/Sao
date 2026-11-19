@@ -6,25 +6,22 @@ local Config = require(script.Parent.Config)
 
 local Stats = {}
 
-function Stats.maxHp(level: number, str: number): number
-	return Config.BASE_HP + Config.HP_PER_LEVEL * (level - 1) + Config.HP_PER_STR * str
+function Stats.maxHp(level: number, pow: number): number
+	return Config.BASE_HP + Config.HP_PER_LEVEL * (level - 1) + Config.HP_PER_POW * pow
 end
 
-function Stats.maxMp(arc: number): number
-	return Config.BASE_MP + Config.MP_PER_ARC * arc
+function Stats.walkSpeed(spd: number, serious: boolean): number
+	local base = if serious then Config.WALK_SERIOUS else Config.WALK_OFF_DUTY
+	return base * (1 + Config.WALK_PER_SPD * spd / 10)
 end
 
-function Stats.maxSp(): number
-	return Config.SP_SEGMENTS
-end
-
-function Stats.fromData(data: any): { maxHp: number, maxMp: number, maxSp: number, skillSlots: number }
+function Stats.fromData(data: any): { maxHp: number, pow: number, spd: number, ins: number }
 	local s = data.stats or {}
 	return {
-		maxHp = Stats.maxHp(data.level or 1, s.STR or 0),
-		maxMp = Stats.maxMp(s.ARC or 0),
-		maxSp = Stats.maxSp(),
-		skillSlots = Config.skillSlotsForLevel(data.level or 1),
+		maxHp = Stats.maxHp(data.level or 1, s.POW or 0),
+		pow = s.POW or 0,
+		spd = s.SPD or 0,
+		ins = s.INS or 0,
 	}
 end
 
@@ -39,6 +36,17 @@ end
 
 function Stats.totalPointsForLevel(level: number): number
 	return (level - 1) * Config.STAT_POINTS_PER_LEVEL
+end
+
+-- The districts a profile may enter, by best bounty ever reached.
+function Stats.districtUnlocked(data: any, code: string): boolean
+	local def = Config.getDistrict(code)
+	return def ~= nil and (data.bestBounty or 0) >= def.bounty
+end
+
+function Stats.storeLevel(data: any): any
+	local lvl = math.clamp((data.store and data.store.level or 0) + 1, 1, #Config.STORE_LEVELS)
+	return Config.STORE_LEVELS[lvl]
 end
 
 return Stats

@@ -1,8 +1,7 @@
 --!strict
--- Server bootstrap for Sword Blox Online. Wires services in dependency order.
--- Combat is not built yet; hooks it will use: FloorService.markCleared,
--- QuestService.advance, ProgressionService.addXp, InventoryService.give,
--- WorldBuilder.isSafe and Analytics.funnel.
+-- Server bootstrap for Clocked Out. Wires services in dependency order.
+-- Services that need each other get one shared `deps` table, so they can call
+-- across (Combat <-> Enemy <-> Bounty) without require cycles.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -17,34 +16,51 @@ local DataService = require(Services.DataService)
 local Analytics = require(Services.Analytics)
 local WorldBuilder = require(Services.WorldBuilder)
 local ProgressionService = require(Services.ProgressionService)
-local InventoryService = require(Services.InventoryService)
-local FloorService = require(Services.FloorService)
-local CharacterService = require(Services.CharacterService)
 local QuestService = require(Services.QuestService)
-local DailyService = require(Services.DailyService)
 local SettingsService = require(Services.SettingsService)
 local MonetizationService = require(Services.MonetizationService)
+local PropService = require(Services.PropService)
+local CombatService = require(Services.CombatService)
+local EnemyService = require(Services.EnemyService)
+local BountyService = require(Services.BountyService)
+local StoreService = require(Services.StoreService)
+local DistrictService = require(Services.DistrictService)
+local CharacterService = require(Services.CharacterService)
+local RewardsService = require(Services.RewardsService)
 local AdminService = require(Services.AdminService)
 
 Remotes.init()
 WorldBuilder.build()
 
+local deps = {
+	Data = DataService,
+	Analytics = Analytics,
+	World = WorldBuilder,
+	Progression = ProgressionService,
+	Quest = QuestService,
+	Monetization = MonetizationService,
+	Prop = PropService,
+	Combat = CombatService,
+	Enemy = EnemyService,
+	Bounty = BountyService,
+	Store = StoreService,
+	District = DistrictService,
+}
+
 Analytics.init(DataService)
 ProgressionService.init(DataService, Analytics)
-InventoryService.init(DataService)
-FloorService.init(DataService, WorldBuilder, Analytics)
-CharacterService.init(DataService, FloorService, Analytics)
-QuestService.init(DataService, ProgressionService, InventoryService, Analytics)
-DailyService.init(DataService, ProgressionService, InventoryService)
+QuestService.init(DataService, ProgressionService, Analytics)
 SettingsService.init(DataService)
 MonetizationService.init(DataService, ProgressionService, Analytics)
-AdminService.init({
-	Data = DataService,
-	Progression = ProgressionService,
-	Floor = FloorService,
-	Inventory = InventoryService,
-	Quest = QuestService,
-})
+PropService.init(WorldBuilder, Analytics)
+CombatService.init(deps)
+EnemyService.init(deps)
+BountyService.init(deps)
+StoreService.init(deps)
+DistrictService.init(deps)
+CharacterService.init(deps)
+RewardsService.init(deps)
+AdminService.init(deps)
 
 -- Client-observed onboarding steps (only ones the client can see first).
 local CLIENT_FUNNEL_STEPS = { FirstMove = true, OpenedLedger = true }

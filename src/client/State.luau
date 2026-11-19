@@ -17,16 +17,6 @@ local function apply(snapshot: any)
 	if typeof(snapshot) ~= "table" then
 		return
 	end
-	-- Floor sets arrive as arrays; turn them back into sets for easy lookup.
-	local unlocked, cleared = {}, {}
-	for _, id in snapshot.unlockedFloors or {} do
-		unlocked[id] = true
-	end
-	for _, id in snapshot.clearedFloors or {} do
-		cleared[id] = true
-	end
-	snapshot.unlockedFloors = unlocked
-	snapshot.clearedFloors = cleared
 	State.data = snapshot
 	State.Changed:Fire(snapshot)
 end

@@ -1,12 +1,16 @@
 --!strict
--- WorldBuilder: builds every floor from Config.FLOORS at runtime.
+-- WorldBuilder: builds every district and the row of store plots from Config.
 -- Rojo never wipes it, and changing a Config number moves the map.
 --
--- Art swap hook: if ServerStorage.FloorKits contains a Model named like the floor
--- code ("F01"), it is cloned and pivoted to the floor origin instead of the greybox.
--- A kit may contain a SpawnLocation named "Spawn", and Parts named "TeleportGate",
--- "QuestBoard" and "LabyrinthEntrance"; missing pieces fall back to greybox ones.
--- Greybox parts carry the "Greybox" tag so they are easy to find and replace.
+-- Districts sit on the X axis (Config.districtOrigin). Each has a plaza with a
+-- travel board, loose-prop spawn points scattered over the ground, enemy spawn
+-- points around the edge and a boss arena at the far end.
+-- Art swap hook: a Model in ServerStorage.DistrictKits named like the code
+-- ("D01") replaces the greybox ground. It may contain Parts named "PropSpawn",
+-- "EnemySpawn" or "BossSpawn" (any number) and a SpawnLocation "Spawn".
+--
+-- Store plots sit in a row at Z = Config.STORE_ROW_Z. StoreService claims one
+-- per player and fills it; WorldBuilder only lays the empty lots.
 
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -19,11 +23,19 @@ local Remotes = require(Shared.Remotes)
 
 local WorldBuilder = {}
 
-local spawns: { [number]: SpawnLocation } = {}
-local origins: { [number]: Vector3 } = {}
+export type DistrictRefs = {
+	code: string,
+	folder: Folder,
+	spawn: BasePart,
+	propSpawns: { BasePart },
+	enemySpawns: { BasePart },
+	bossSpawn: BasePart,
+}
 
-local PLAZA_SIZE = 140
-local SAFE_HEIGHT = 60
+local districts: { [string]: DistrictRefs } = {}
+local plots: { Model } = {}
+
+local PLAZA_SIZE = 90
 
 local function part(props: { [string]: any }, parent: Instance): BasePart
 	local p = Instance.new("Part")
@@ -39,147 +51,198 @@ local function part(props: { [string]: any }, parent: Instance): BasePart
 	return p
 end
 
-local function addPrompt(target: BasePart, actionText: string, objectText: string, tab: string)
+local function marker(name: string, position: Vector3, parent: Instance): BasePart
+	return part({
+		Name = name,
+		Size = Vector3.new(1, 1, 1),
+		Position = position,
+		Transparency = 1,
+		CanCollide = false,
+		CanQuery = false,
+		CanTouch = false,
+	}, parent)
+end
+
+function WorldBuilder.addPrompt(target: BasePart, actionText: string, objectText: string, onTrigger: (Player) -> (), hold: number?): ProximityPrompt
 	local prompt = Instance.new("ProximityPrompt")
 	prompt.ActionText = actionText
 	prompt.ObjectText = objectText
-	prompt.KeyboardKeyCode = Enum.KeyCode.E
-	prompt.GamepadKeyCode = Enum.KeyCode.ButtonX
-	prompt.HoldDuration = 0
-	prompt.MaxActivationDistance = 12
+	prompt.KeyboardKeyCode = Enum.KeyCode.G -- E grabs, F parries
+	prompt.GamepadKeyCode = Enum.KeyCode.DPadUp -- X is light attack
+	prompt.HoldDuration = hold or 0
+	prompt.MaxActivationDistance = 10
 	prompt.RequiresLineOfSight = false
-	prompt:SetAttribute("OpensTab", tab)
 	prompt.Parent = target
-	prompt.Triggered:Connect(function(player: Player)
-		Remotes.event("OpenLedger"):FireClient(player, tab)
-	end)
+	prompt.Triggered:Connect(onTrigger)
+	return prompt
 end
 
-function WorldBuilder.origin(floorId: number): Vector3
-	return origins[floorId] or Vector3.new((floorId - 1) * Config.FLOOR_SPACING, 0, 0)
-end
-
-local function buildGreybox(def: Config.FloorDef, folder: Folder, origin: Vector3): SpawnLocation
-	local size = def.size
-
-	part({
-		Name = "Ground",
-		Size = Vector3.new(size.X, 4, size.Y),
-		Position = origin + Vector3.new(0, -2, 0),
-		Color = def.groundColor,
-		Material = Enum.Material.Grass,
-	}, folder)
-
-	part({
-		Name = "Plaza",
-		Size = Vector3.new(PLAZA_SIZE, 1, PLAZA_SIZE),
-		Position = origin + Vector3.new(0, 0.5, 0),
-		Color = def.plazaColor,
-		Material = Enum.Material.Slate,
-	}, folder)
-
-	local spawn = Instance.new("SpawnLocation")
-	spawn.Name = "Spawn"
-	spawn.Anchored = true
-	spawn.Neutral = true
-	spawn.Duration = 0
-	spawn.Size = Vector3.new(10, 1, 10)
-	spawn.Position = origin + Vector3.new(0, 1.5, 0)
-	spawn.Color = def.plazaColor
-	spawn.Material = Enum.Material.Slate
-	spawn.TopSurface = Enum.SurfaceType.Smooth
-	spawn.Transparency = 0
-	CollectionService:AddTag(spawn, "Greybox")
-	spawn.Parent = folder
-	return spawn
-end
-
-local function ensurePiece(folder: Instance, name: string, build: () -> BasePart): BasePart
-	local found = folder:FindFirstChild(name, true)
-	if found and found:IsA("BasePart") then
-		return found
+-- Seeded scatter so every server builds the same district.
+local function scatter(rng: Random, size: Vector2, avoidRadius: number): Vector3
+	for _ = 1, 20 do
+		local x = rng:NextNumber(-size.X / 2 + 10, size.X / 2 - 10)
+		local z = rng:NextNumber(-size.Y / 2 + 10, size.Y / 2 - 10)
+		if math.sqrt(x * x + z * z) > avoidRadius then
+			return Vector3.new(x, 0, z)
+		end
 	end
-	return build()
+	return Vector3.new(size.X / 3, 0, size.Y / 3)
 end
 
-local function buildFloor(def: Config.FloorDef, root: Folder)
-	local code = Config.floorCode(def.id)
-	local origin = Vector3.new((def.id - 1) * Config.FLOOR_SPACING, 0, 0)
-	origins[def.id] = origin
+local function buildCover(def: Config.DistrictDef, folder: Folder, origin: Vector3, rng: Random)
+	-- Low crates and walls so fights have corners and things to throw over.
+	for i = 1, 26 do
+		local pos = scatter(rng, def.size, PLAZA_SIZE / 2 + 12)
+		local w, h, d = rng:NextNumber(4, 12), rng:NextNumber(3, 7), rng:NextNumber(4, 12)
+		part({
+			Name = "Cover" .. i,
+			Size = Vector3.new(w, h, d),
+			Position = origin + pos + Vector3.new(0, h / 2, 0),
+			Color = def.plazaColor:Lerp(Color3.new(0, 0, 0), 0.25),
+			Material = Enum.Material.Concrete,
+		}, folder)
+	end
+end
 
+local function buildDistrict(def: Config.DistrictDef, root: Folder)
+	local origin = Config.districtOrigin(def.code)
 	local folder = Instance.new("Folder")
-	folder.Name = code
-	folder:SetAttribute("FloorId", def.id)
+	folder.Name = def.code
+	folder:SetAttribute("District", def.code)
 	folder.Parent = root
 
-	local spawn: SpawnLocation? = nil
-	local kits = ServerStorage:FindFirstChild("FloorKits")
-	local kit = kits and kits:FindFirstChild(code)
+	local refs: DistrictRefs = {
+		code = def.code,
+		folder = folder,
+		spawn = nil :: any,
+		propSpawns = {},
+		enemySpawns = {},
+		bossSpawn = nil :: any,
+	}
+
+	local kits = ServerStorage:FindFirstChild("DistrictKits")
+	local kit = kits and kits:FindFirstChild(def.code)
 	if kit and kit:IsA("Model") then
 		local clone = kit:Clone()
 		clone:PivotTo(CFrame.new(origin))
 		clone.Parent = folder
-		local s = clone:FindFirstChild("Spawn", true)
-		if s and s:IsA("SpawnLocation") then
-			spawn = s
+		for _, d in clone:GetDescendants() do
+			if d:IsA("BasePart") then
+				if d.Name == "PropSpawn" then
+					table.insert(refs.propSpawns, d)
+				elseif d.Name == "EnemySpawn" then
+					table.insert(refs.enemySpawns, d)
+				elseif d.Name == "BossSpawn" then
+					refs.bossSpawn = d
+				elseif d.Name == "Spawn" then
+					refs.spawn = d
+				end
+			end
+		end
+	else
+		part({
+			Name = "Ground",
+			Size = Vector3.new(def.size.X, 4, def.size.Y),
+			Position = origin + Vector3.new(0, -2, 0),
+			Color = def.groundColor,
+			Material = Enum.Material.Asphalt,
+		}, folder)
+		part({
+			Name = "Plaza",
+			Size = Vector3.new(PLAZA_SIZE, 1, PLAZA_SIZE),
+			Position = origin + Vector3.new(0, 0.5, 0),
+			Color = def.plazaColor,
+			Material = Enum.Material.Pavement,
+		}, folder)
+		local rng = Random.new(Config.districtIndex(def.code) * 7919)
+		buildCover(def, folder, origin, rng)
+	end
+
+	if not refs.spawn then
+		refs.spawn = part({
+			Name = "Spawn",
+			Size = Vector3.new(10, 1, 10),
+			Position = origin + Vector3.new(0, 1.1, PLAZA_SIZE / 2 - 10),
+			Color = def.plazaColor:Lerp(Color3.new(1, 1, 1), 0.3),
+			Material = Enum.Material.Pavement,
+		}, folder)
+	end
+
+	local rng = Random.new(Config.districtIndex(def.code) * 104729)
+	if #refs.propSpawns == 0 then
+		local total = 0
+		for _, n in def.props do
+			total += n
+		end
+		for i = 1, total * 2 do
+			local pos = scatter(rng, def.size, 8)
+			table.insert(refs.propSpawns, marker("PropSpawn", origin + pos + Vector3.new(0, 2, 0), folder))
 		end
 	end
-	if not spawn then
-		spawn = buildGreybox(def, folder, origin)
+	if #refs.enemySpawns == 0 then
+		for i = 1, 10 do
+			local angle = (i / 10) * math.pi * 2
+			local r = math.min(def.size.X, def.size.Y) * 0.35
+			table.insert(refs.enemySpawns, marker("EnemySpawn", origin + Vector3.new(math.cos(angle) * r, 4, math.sin(angle) * r), folder))
+		end
 	end
-	assert(spawn)
-	spawn.Neutral = true
-	spawns[def.id] = spawn
-
-	local half = PLAZA_SIZE / 2
-
-	local gate = ensurePiece(folder, "TeleportGate", function()
-		return part({
-			Name = "TeleportGate",
-			Size = Vector3.new(14, 1, 14),
-			Position = origin + Vector3.new(half - 14, 1.5, 0),
-			Color = Color3.fromRGB(58, 64, 70),
-			Material = Enum.Material.Metal,
+	if not refs.bossSpawn then
+		local arena = part({
+			Name = "BossArena",
+			Size = Vector3.new(70, 1, 70),
+			Position = origin + Vector3.new(0, 0.5, -def.size.Y / 2 + 45),
+			Color = Color3.fromRGB(30, 30, 32),
+			Material = Enum.Material.Slate,
 		}, folder)
-	end)
-	addPrompt(gate, "Open map", "Teleport Gate", "Map")
+		arena:SetAttribute("BossArena", def.code)
+		refs.bossSpawn = marker("BossSpawn", arena.Position + Vector3.new(0, 5, 0), folder)
+	end
 
-	local board = ensurePiece(folder, "QuestBoard", function()
-		return part({
-			Name = "QuestBoard",
-			Size = Vector3.new(8, 6, 1),
-			Position = origin + Vector3.new(-half + 14, 4, -12),
-			Color = Color3.fromRGB(92, 74, 56),
-			Material = Enum.Material.Wood,
-		}, folder)
+	-- Travel board: opens the Map tab.
+	local board = part({
+		Name = "TravelBoard",
+		Size = Vector3.new(8, 6, 1),
+		Position = origin + Vector3.new(-PLAZA_SIZE / 2 + 10, 4, PLAZA_SIZE / 2 - 10),
+		Color = Color3.fromRGB(240, 235, 225),
+		Material = Enum.Material.SmoothPlastic,
+	}, folder)
+	WorldBuilder.addPrompt(board, "Open map", "Travel board", function(player)
+		Remotes.event("OpenLedger"):FireClient(player, "Map")
 	end)
-	addPrompt(board, "Read", "Quest board", "Quests")
 
-	local labyrinth = ensurePiece(folder, "LabyrinthEntrance", function()
-		return part({
-			Name = "LabyrinthEntrance",
-			Size = Vector3.new(40, 1, 40),
-			Position = origin + Vector3.new(0, 0.5, -(def.size.Y / 2) + 40),
-			Color = Color3.fromRGB(40, 42, 46),
-			Material = Enum.Material.Basalt,
-		}, folder)
-	end)
-	labyrinth:SetAttribute("Labyrinth", true)
+	districts[def.code] = refs
+end
 
-	-- Safe zone: towns take no damage and monsters cannot enter (read by combat later).
-	local safe = Instance.new("Part")
-	safe.Name = "SafeZone"
-	safe.Anchored = true
-	safe.CanCollide = false
-	safe.CanQuery = false
-	safe.CanTouch = false
-	safe.Transparency = 1
-	safe.Size = Vector3.new(PLAZA_SIZE, SAFE_HEIGHT, PLAZA_SIZE)
-	safe.Position = origin + Vector3.new(0, SAFE_HEIGHT / 2, 0)
-	safe:SetAttribute("SafeZone", true)
-	safe:SetAttribute("FloorId", def.id)
-	CollectionService:AddTag(safe, "SafeZone")
-	safe.Parent = folder
+local function buildPlots(root: Folder)
+	local folder = Instance.new("Folder")
+	folder.Name = "Stores"
+	folder.Parent = root
+
+	local width = Config.STORE_PLOTS * Config.STORE_SPACING
+	part({
+		Name = "StoreStreet",
+		Size = Vector3.new(width + 60, 4, Config.STORE_SIZE.Z + 60),
+		Position = Vector3.new(width / 2 - Config.STORE_SPACING / 2, -2, Config.STORE_ROW_Z),
+		Color = Color3.fromRGB(128, 124, 116),
+		Material = Enum.Material.Pavement,
+	}, folder)
+
+	for i = 1, Config.STORE_PLOTS do
+		local lot = Instance.new("Model")
+		lot.Name = "Plot" .. i
+		lot:SetAttribute("PlotIndex", i)
+		local center = Vector3.new((i - 1) * Config.STORE_SPACING, 0, Config.STORE_ROW_Z)
+		local base = part({
+			Name = "Lot",
+			Size = Vector3.new(Config.STORE_SIZE.X + 8, 0.4, Config.STORE_SIZE.Z + 8),
+			Position = center + Vector3.new(0, 0.2, 0),
+			Color = Color3.fromRGB(150, 146, 138),
+			Material = Enum.Material.Concrete,
+		}, lot)
+		lot.PrimaryPart = base
+		lot.Parent = folder
+		table.insert(plots, lot)
+	end
 end
 
 function WorldBuilder.build()
@@ -191,33 +254,33 @@ function WorldBuilder.build()
 	root.Name = "World"
 	root.Parent = Workspace
 
-	for _, def in Config.FLOORS do
-		buildFloor(def, root)
+	for _, def in Config.DISTRICTS do
+		buildDistrict(def, root)
 	end
+	buildPlots(root)
 
-	-- Baseplate from a fresh place would sit under floor 1; remove it.
 	local baseplate = Workspace:FindFirstChild("Baseplate")
 	if baseplate then
 		baseplate:Destroy()
 	end
 end
 
-function WorldBuilder.getSpawn(floorId: number): SpawnLocation?
-	return spawns[floorId]
+function WorldBuilder.district(code: string): DistrictRefs?
+	return districts[code]
 end
 
--- True if a world position is inside any town safe zone.
-function WorldBuilder.isSafe(position: Vector3): boolean
-	for _, zone in CollectionService:GetTagged("SafeZone") do
-		if zone:IsA("BasePart") then
-			local rel = zone.CFrame:PointToObjectSpace(position)
-			local h = zone.Size / 2
-			if math.abs(rel.X) <= h.X and math.abs(rel.Y) <= h.Y and math.abs(rel.Z) <= h.Z then
-				return true
-			end
-		end
+function WorldBuilder.plot(index: number): Model?
+	return plots[index]
+end
+
+-- Which district (or "Store") a world position is in.
+function WorldBuilder.areaAt(position: Vector3): string
+	if math.abs(position.Z - Config.STORE_ROW_Z) < 80 and position.X < Config.DISTRICT_SPACING / 2 then
+		return "Store"
 	end
-	return false
+	local idx = math.floor(position.X / Config.DISTRICT_SPACING + 0.5)
+	local def = Config.DISTRICTS[idx]
+	return if def then def.code else "Store"
 end
 
 return WorldBuilder

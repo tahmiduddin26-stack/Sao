@@ -1,5 +1,5 @@
 --!strict
--- Motion: the one motion module (plan 27.5). enter, exit, press, stagger, bar.
+-- Motion: the one motion module. enter, exit, press, stagger, bar.
 -- Every call cancels running tweens on the same object first, so animations
 -- never stack. Fades tween each element's own transparency from cached base
 -- values instead of using CanvasGroup (cheaper on low-end phones).

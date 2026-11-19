@@ -21,7 +21,7 @@ function Common.columns(content: Frame, leftScale: number): (Frame, Frame, Frame
 		Size = UDim2.new(leftScale, 0, 1, 0),
 		Parent = root,
 	}, { UI.padding(18, 22) })
-	UI.block(Theme.Color.Rule, { Size = UDim2.new(0, 1, 1, 0), Position = UDim2.new(leftScale, 0, 0, 0), Parent = root })
+	UI.block(Theme.Color.Line, { Size = UDim2.new(0, 1, 1, 0), Position = UDim2.new(leftScale, 0, 0, 0), Parent = root })
 	local right = UI.new("Frame", {
 		Name = "Right",
 		BackgroundTransparency = 1,
@@ -57,7 +57,7 @@ function Common.kv(parent: Instance, key: string, value: string, order: number?,
 		Position = UDim2.fromScale(1, 0),
 		Size = UDim2.new(0.4, 0, 1, 0),
 		TextXAlignment = Enum.TextXAlignment.Right,
-		TextColor3 = valueColor or Theme.Color.Bone,
+		TextColor3 = valueColor or Theme.Color.Ink,
 		Parent = row,
 	})
 	return row
@@ -65,7 +65,7 @@ end
 
 -- Empty-state note in a quiet plate.
 function Common.note(parent: Instance, text: string, order: number?): Frame
-	local f = UI.block(Theme.Color.Plate, {
+	local f = UI.block(Theme.Color.Tone, {
 		Size = UDim2.new(1, 0, 0, 0),
 		AutomaticSize = Enum.AutomaticSize.Y,
 		LayoutOrder = order or 0,

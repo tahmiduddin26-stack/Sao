@@ -17,7 +17,7 @@ local Common = require(script.Parent.Common)
 local Tab = { title = "Settings" }
 
 local function settingRow(parent: Instance, order: number, label: string, hint: string?): Frame
-	local row = UI.block(Theme.Color.Plate, { Size = UDim2.new(1, 0, 0, 56), LayoutOrder = order, Parent = parent }, { UI.padding(8, 14) })
+	local row = UI.block(Theme.Color.Tone, { Size = UDim2.new(1, 0, 0, 56), LayoutOrder = order, Parent = parent }, { UI.padding(8, 14) })
 	UI.text(label, "bold", Theme.TextSize.Body, { Size = UDim2.new(1, -220, 0, 22), Parent = row })
 	if hint then
 		UI.text(hint, "body", Theme.TextSize.Caption, {

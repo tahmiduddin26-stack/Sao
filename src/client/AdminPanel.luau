@@ -17,13 +17,14 @@ local AdminPanel = {}
 
 local COMMANDS = {
 	{ "give_xp", "Give XP", "500" },
-	{ "give_gold", "Give gold", "1000" },
+	{ "give_cash", "Give Cash", "1000" },
 	{ "set_level", "Set level", "10" },
-	{ "unlock_floor", "Unlock floor", "2" },
-	{ "unlock_all", "Unlock all floors", "" },
-	{ "clear_floor", "Clear floor", "1" },
-	{ "give_item", "Give item", "tidecutter" },
-	{ "advance_quest", "Advance quest", "F01_Side_ScarecrowThatMoves" },
+	{ "give_bounty", "Give bounty", "25000" },
+	{ "unlock_all", "Unlock all districts", "" },
+	{ "full_focus", "Full Focus", "" },
+	{ "give_prop", "Give prop", "frying_pan" },
+	{ "spawn_enemy", "Spawn enemy", "thug" },
+	{ "advance_quest", "Advance job", "D01_Main_OpenForBusiness" },
 	{ "reset_daily", "Reset daily", "" },
 	{ "test_banner", "Test banner", "boss" },
 }
@@ -39,18 +40,18 @@ function AdminPanel.init(root: Frame)
 		ZIndex = 30,
 		Parent = root,
 	}, { UI.padding(12), UI.list(Enum.FillDirection.Vertical, 6) })
-	UI.caption("Admin", { LayoutOrder = 0, TextColor3 = Theme.Color.Ember, TextTransparency = 0, Parent = panel })
+	UI.caption("Admin", { LayoutOrder = 0, TextColor3 = Theme.Color.Danger, TextTransparency = 0, Parent = panel })
 
 	local argBox: TextBox = UI.new("TextBox", {
 		Name = "Arg",
-		BackgroundColor3 = Theme.Color.Ink,
+		BackgroundColor3 = Theme.Color.Shade,
 		BorderSizePixel = 0,
 		ClearTextOnFocus = false,
 		PlaceholderText = "argument",
 		Text = "",
 		FontFace = Theme.Font.Mono,
 		TextSize = Theme.TextSize.Caption,
-		TextColor3 = Theme.Color.Bone,
+		TextColor3 = Theme.Color.Ink,
 		Size = UDim2.new(1, 0, 0, 30),
 		LayoutOrder = 1,
 		Parent = panel,

@@ -1,6 +1,6 @@
 --!strict
 -- Router: opens and closes Ledger tabs and overlays, keeps one open at a time,
--- and handles Back on every input (plan 25.2, 27.5).
+-- and handles Back on every input.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Signal = require(ReplicatedStorage.Shared.Signal)

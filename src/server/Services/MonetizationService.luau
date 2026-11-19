@@ -1,6 +1,6 @@
 --!strict
--- MonetizationService: game passes and developer products (plan 11).
--- Never sells power or the climb. Passes and products with ID 0 are not created
+-- MonetizationService: game passes and developer products.
+-- Never sells the bounty climb. Passes and products with ID 0 are not created
 -- on Roblox yet; in Studio the client can simulate buying them so every flow
 -- can be tested first. Receipts are stored in the profile (no double grants).
 
@@ -64,35 +64,38 @@ end
 
 -- Product handlers. Each returns true when the grant is applied.
 local PRODUCT_HANDLERS: { [string]: (Player) -> boolean } = {
-	RespecScroll = function(player)
-		ProgressionService.respec(player)
-		toast(player, { kind = "info", title = "Stats reset", body = "All stat points are back to spend." })
+	CashPack = function(player)
+		local data = DataService.get(player)
+		local amount = Config.cashPackAmount(data.level)
+		ProgressionService.addCash(player, amount, "IAP", "CashPack")
 		return true
 	end,
-	CardinalsBlessing = function(player)
+	BigSale = function(player)
 		local now = os.time()
-		local untilTime = Workspace:GetAttribute("BlessingUntil")
-		local stacks = Workspace:GetAttribute("BlessingStacks")
+		local untilTime = Workspace:GetAttribute("BigSaleUntil")
+		local stacks = Workspace:GetAttribute("BigSaleStacks")
 		if typeof(untilTime) ~= "number" or untilTime < now then
 			untilTime = now
 			stacks = 0
 		end
-		Workspace:SetAttribute("BlessingUntil", (untilTime :: number) + Config.BLESSING_SECONDS)
-		Workspace:SetAttribute("BlessingStacks", math.min(((stacks :: number?) or 0) + 1, Config.BLESSING_MAX_STACKS))
-		Workspace:SetAttribute("BlessingBy", player.DisplayName)
+		Workspace:SetAttribute("BigSaleUntil", (untilTime :: number) + Config.BIG_SALE_SECONDS)
+		Workspace:SetAttribute("BigSaleStacks", math.min(((stacks :: number?) or 0) + 1, Config.BIG_SALE_MAX_STACKS))
+		Workspace:SetAttribute("BigSaleBy", player.DisplayName)
 		for _, p in Players:GetPlayers() do
-			toast(p, { kind = "info", title = "Server blessing", body = player.DisplayName .. " blessed the server. XP boost for everyone." })
+			toast(p, { kind = "info", title = "Big Sale", body = player.DisplayName .. " started a Big Sale. More Cash for everyone." })
 		end
 		return true
 	end,
-	ReviveToken = function(player)
-		local data = DataService.get(player)
-		data.tokens.Revive += 1
+	LuckyDelivery = function(player)
+		local now = os.time()
+		local current = player:GetAttribute("LuckyUntil")
+		local base = if typeof(current) == "number" and current > now then current else now
+		player:SetAttribute("LuckyUntil", base + Config.LUCKY_DELIVERY_SECONDS)
 		return true
 	end,
-	DyeSlot = function(player)
+	BountyShield = function(player)
 		local data = DataService.get(player)
-		data.tokens.Dye += 1
+		data.tokens.BountyShield += 1
 		return true
 	end,
 }

@@ -1,8 +1,8 @@
 --!strict
--- Input: menu controls on every platform (plan 24.1).
+-- Input: menu controls on every platform.
 --  Ledger: Tab or M (PC), Start (gamepad), menu button (touch).
 --  Back / close: Esc or Backspace (PC), B (gamepad, only while a menu is open), close button.
--- Combat bindings (attack, Sword Skills, dodge, Switch, crystal) arrive with combat.
+-- Combat bindings live in the Combat module.
 
 local ContextActionService = game:GetService("ContextActionService")
 local Players = game:GetService("Players")
@@ -14,7 +14,7 @@ local Router = require(script.Parent.UI.Router)
 
 local Input = {}
 
-local BACK_ACTION = "SBO_Back"
+local BACK_ACTION = "CO_Back"
 
 local function onLedger(_name: string, state: Enum.UserInputState): Enum.ContextActionResult
 	if state == Enum.UserInputState.Begin then
@@ -34,7 +34,7 @@ local function onBack(_name: string, state: Enum.UserInputState): Enum.ContextAc
 end
 
 function Input.init()
-	ContextActionService:BindAction("SBO_Ledger", onLedger, false, Enum.KeyCode.Tab, Enum.KeyCode.M, Enum.KeyCode.ButtonStart)
+	ContextActionService:BindAction("CO_Ledger", onLedger, false, Enum.KeyCode.Tab, Enum.KeyCode.M, Enum.KeyCode.ButtonStart)
 
 	-- B and Esc only consume input while something is open, so they keep their
 	-- normal jobs otherwise.

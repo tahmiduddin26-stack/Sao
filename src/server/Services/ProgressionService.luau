@@ -1,10 +1,9 @@
 --!strict
--- ProgressionService: XP, levels, stat points, gold and derived maxima.
--- The only place that changes level, xp, statPoints, stats or gold.
+-- ProgressionService: XP, levels, stat points, Cash and derived maxima.
+-- The only place that changes level, xp, statPoints, stats or cash.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local Workspace = game:GetService("Workspace")
 
 local Shared = ReplicatedStorage.Shared
 local Config = require(Shared.Config)
@@ -21,15 +20,6 @@ local function toast(player: Player, payload: any)
 	Remotes.event("Toast"):FireClient(player, payload)
 end
 
--- Server-wide blessing multiplier (bought by any player; stacks).
-function ProgressionService.xpMultiplier(): number
-	local untilTime = Workspace:GetAttribute("BlessingUntil")
-	local stacks = Workspace:GetAttribute("BlessingStacks")
-	if typeof(untilTime) == "number" and untilTime > os.time() and typeof(stacks) == "number" then
-		return 1 + Config.BLESSING_XP_MULT_PER_STACK * math.min(stacks, Config.BLESSING_MAX_STACKS)
-	end
-	return 1
-end
 
 -- Push derived values to the character and player attributes.
 function ProgressionService.applyDerived(player: Player)
@@ -39,15 +29,6 @@ function ProgressionService.applyDerived(player: Player)
 	end
 	local derived = Stats.fromData(data)
 	player:SetAttribute("Level", data.level)
-	player:SetAttribute("MaxSP", derived.maxSp)
-	player:SetAttribute("MaxMP", derived.maxMp)
-	if player:GetAttribute("SP") == nil then
-		player:SetAttribute("SP", derived.maxSp)
-	end
-	local mp = player:GetAttribute("MP")
-	if typeof(mp) ~= "number" or mp > derived.maxMp then
-		player:SetAttribute("MP", derived.maxMp)
-	end
 
 	local character = player.Character
 	local humanoid = character and character:FindFirstChildOfClass("Humanoid")
@@ -65,7 +46,7 @@ function ProgressionService.addXp(player: Player, amount: number, source: string
 	if not data or amount <= 0 then
 		return
 	end
-	amount = math.floor(amount * ProgressionService.xpMultiplier())
+	amount = math.floor(amount)
 	data.xp += amount
 	local startLevel = data.level
 	while data.xp >= Config.xpToNext(data.level) do
@@ -76,46 +57,33 @@ function ProgressionService.addXp(player: Player, amount: number, source: string
 	if data.level > startLevel then
 		toast(player, { kind = "levelup", title = "Level up", from = startLevel, to = data.level })
 		Analytics.custom(player, "LevelUp", data.level, { Source = source or "unknown" })
-		local oldSlots = Config.skillSlotsForLevel(startLevel)
-		local newSlots = Config.skillSlotsForLevel(data.level)
-		if newSlots > oldSlots then
-			toast(player, { kind = "info", title = "Skill slot unlocked", body = string.format("You can now equip %d Sword Skills.", newSlots) })
-		end
 		ProgressionService.applyDerived(player)
 	end
 	DataService.changed(player)
 end
 
-function ProgressionService.addGold(player: Player, amount: number, transactionType: string, sku: string?)
+function ProgressionService.addCash(player: Player, amount: number, transactionType: string, sku: string?)
 	local data = DataService.get(player)
 	if not data or amount <= 0 then
 		return
 	end
-	data.gold += math.floor(amount)
-	Analytics.economy(player, "Source", Config.CURRENCY_NAME, amount, data.gold, transactionType, sku)
+	data.cash += math.floor(amount)
+	Analytics.economy(player, "Source", Config.CURRENCY_NAME, amount, data.cash, transactionType, sku)
 	DataService.changed(player)
 end
 
 -- Returns true if the player could afford it.
-function ProgressionService.spendGold(player: Player, amount: number, transactionType: string, sku: string?): boolean
+function ProgressionService.spendCash(player: Player, amount: number, transactionType: string, sku: string?): boolean
 	local data = DataService.get(player)
-	if not data or amount <= 0 or data.gold < amount then
+	if not data or amount <= 0 or data.cash < amount then
 		return false
 	end
-	data.gold -= math.floor(amount)
-	Analytics.economy(player, "Sink", Config.CURRENCY_NAME, amount, data.gold, transactionType, sku)
+	data.cash -= math.floor(amount)
+	Analytics.economy(player, "Sink", Config.CURRENCY_NAME, amount, data.cash, transactionType, sku)
 	DataService.changed(player)
 	return true
 end
 
-function ProgressionService.addMaterial(player: Player, key: string, amount: number)
-	local data = DataService.get(player)
-	if not data or amount <= 0 or not (Config.MATERIALS :: any)[key] then
-		return
-	end
-	data.materials[key] = (data.materials[key] or 0) + math.floor(amount)
-	DataService.changed(player)
-end
 
 function ProgressionService.setLevel(player: Player, level: number)
 	local data = DataService.get(player)

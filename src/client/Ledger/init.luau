@@ -1,8 +1,8 @@
 --!strict
--- Ledger: the one menu shell (plan 25). Slides in from the right, same rail of
--- tabs on the left, same header with currency and close, and a content area.
--- Only one tab is open at a time; opening another swaps the content, not the shell.
--- Each tab module exports { title, render(content, data, ctx), unread?(data) }.
+-- Ledger: the one menu, drawn as a comic page. Five chunky tabs on the left
+-- (ME, STORE, JOBS, MAP, SHOP), a brush-stroke title, Cash and bounty
+-- stickers, and a big close button. Settings sit behind a small button under
+-- the tabs. Each tab module exports { title, render(content, data, ctx), unread?(data) }.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
@@ -34,33 +34,29 @@ export type Tab = {
 	unread: ((data: any) -> boolean)?,
 }
 
-local TAB_ORDER = { "Character", "Skills", "Bag", "Quests", "Map", "Party", "Guild", "Shop", "Settings" }
+local TAB_ORDER = { "Me", "Store", "Jobs", "Map", "Shop" }
 local tabs: { [string]: Tab } = {}
 for _, name in TAB_ORDER do
 	tabs[name] = require(script:WaitForChild(name)) :: any
 end
+tabs.Settings = require(script:WaitForChild("Settings")) :: any
 
 local scrim: TextButton
-local shell: Frame
+local shellOuter: GuiObject
 local railButtons: { [string]: TextButton } = {}
-local titleLabel: TextLabel
-local goldChip: TextLabel
-local crystalChip: TextLabel
+local title: Frame
+local cashSticker: TextLabel
+local bountySticker: TextLabel
 local content: Frame
-local currentTab = "Character"
+local currentTab = "Me"
 local isOpen = false
 local scrollMemory: { [string]: Vector2 } = {}
 local liveScrolls: { [string]: ScrollingFrame } = {}
 local funnelSent = false
 
-local function hex(c: Color3): string
-	return "#" .. c:ToHex()
-end
-
 local ctx: Ctx
 
 local function render(animate: boolean)
-	-- Remember scroll positions before the content is rebuilt.
 	for key, sf in liveScrolls do
 		if sf.Parent then
 			scrollMemory[key] = sf.CanvasPosition
@@ -70,7 +66,7 @@ local function render(animate: boolean)
 
 	UI.clear(content)
 	local tab = tabs[currentTab]
-	titleLabel.Text = string.upper(tab and tab.title or currentTab)
+	UI.setBrushText(title, tab and tab.title or currentTab)
 	local data = State.data
 	if tab and data then
 		tab.render(content, data, ctx)
@@ -84,12 +80,15 @@ end
 
 local function updateRail(data: any?)
 	for name, btn in railButtons do
-		UI.setTabSelected(btn, name == currentTab)
+		local selected = name == currentTab
+		btn.BackgroundColor3 = if selected then C.Red else C.Paper
+		btn.TextColor3 = if selected then C.Paper else C.Ink
+		UI.outer(btn).Rotation = if selected then -2 else 0
 		local tab = tabs[name]
 		local unread = data ~= nil and tab.unread ~= nil and tab.unread(data)
-		local marker = btn:FindFirstChild("Unread")
+		local marker = btn:FindFirstChild("Splat")
 		if unread and not marker then
-			UI.unread({ Parent = btn })
+			UI.splat(btn, UDim2.new(1, -16, 0.5, 0), 22, C.Red, #name, { ZIndex = 2 })
 		elseif not unread and marker then
 			marker:Destroy()
 		end
@@ -97,8 +96,8 @@ local function updateRail(data: any?)
 end
 
 local function updateHeader(data: any)
-	goldChip.Text = string.format('<font color="%s">%s</font> %s', hex(C.Lantern), Config.CURRENCY_CODE, Format.commas(data.gold or 0))
-	crystalChip.Text = string.format("%s %s", Config.MATERIALS.Crystal.code, Format.commas((data.materials and data.materials.Crystal) or 0))
+	cashSticker.Text = Config.CURRENCY_CODE .. Format.commas(data.cash or 0)
+	bountySticker.Text = "BOUNTY " .. Format.commas(data.bounty or 0)
 end
 
 local function setTab(name: string, animate: boolean?)
@@ -114,6 +113,12 @@ end
 local function open(tab: string?)
 	if tab and tabs[tab] then
 		currentTab = tab
+	elseif tab and tab ~= "" then
+		-- Old tab names from world prompts map onto the new five.
+		local aliases: { [string]: string } = { Character = "Me", Quests = "Jobs" }
+		if aliases[tab] then
+			currentTab = aliases[tab]
+		end
 	end
 	isOpen = true
 	updateRail(State.data)
@@ -125,9 +130,9 @@ local function open(tab: string?)
 	Motion.setFade(scrim, 1)
 	scrim.Visible = true
 	Motion.fadeTo(scrim, 0, Theme.Motion.quick.time, Theme.Motion.quick.style, Theme.Motion.quick.dir)
-	Motion.enter(shell, "panel", Theme.Motion.base)
-	Motion.enter(content, "up", Theme.Motion.base, 0.08)
-	UI.focusFirst(shell)
+	shellOuter.Visible = true
+	Motion.enter(shellOuter, "panel", Theme.Motion.base)
+	UI.focusFirst(shellOuter)
 
 	if not funnelSent then
 		funnelSent = true
@@ -137,11 +142,10 @@ end
 
 local function close()
 	isOpen = false
-	-- Exits are faster than entrances and never stagger.
-	Motion.exit(shell, "panel", Theme.Motion.base)
+	Motion.exit(shellOuter, "panel", Theme.Motion.base)
 	Motion.exit(scrim, "fade", Theme.Motion.quick)
 	local GuiService = game:GetService("GuiService")
-	if GuiService.SelectedObject and GuiService.SelectedObject:IsDescendantOf(shell) then
+	if GuiService.SelectedObject and GuiService.SelectedObject:IsDescendantOf(shellOuter) then
 		GuiService.SelectedObject = nil
 	end
 end
@@ -167,7 +171,7 @@ function Ledger.init(root: Frame)
 			end
 		end,
 		openTab = function(name: string)
-			Router.open("Ledger", name)
+			setTab(name)
 		end,
 	}
 
@@ -175,8 +179,8 @@ function Ledger.init(root: Frame)
 		Name = "LedgerScrim",
 		AutoButtonColor = false,
 		Text = "",
-		BackgroundColor3 = C.Ink,
-		BackgroundTransparency = 0.45,
+		BackgroundColor3 = C.Shade,
+		BackgroundTransparency = 0.4,
 		BorderSizePixel = 0,
 		Size = UDim2.fromScale(1, 1),
 		Visible = false,
@@ -188,91 +192,101 @@ function Ledger.init(root: Frame)
 		Router.close()
 	end)
 
-	shell = UI.plate({
+	local shell = UI.panel({
 		Name = "Ledger",
-		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, -40, 0.5, 0),
-		Size = UDim2.fromOffset(920, 560),
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.52),
+		Size = UDim2.fromOffset(980, 590),
 		Visible = false,
 		ZIndex = 11,
 		Parent = root,
-	})
+	}, { tone = "BR", offset = 12, shadow = C.Red })
+	shellOuter = UI.outer(shell)
 	shell.SelectionGroup = true
 
-	-- Rail
+	-- Rail: five chunky tabs and a small settings button.
 	local rail = UI.new("Frame", {
 		Name = "Rail",
-		BackgroundTransparency = 1,
-		Size = UDim2.new(0, 170, 1, 0),
+		BackgroundColor3 = C.Tone,
+		BorderSizePixel = 0,
+		Size = UDim2.new(0, 200, 1, 0),
 		Parent = shell,
 	})
-	UI.block(C.Rule, { Size = UDim2.new(0, 1, 1, 0), Position = UDim2.new(1, -1, 0, 0), Parent = rail })
-	UI.text("LEDGER", "display", Theme.TextSize.Caption, {
-		Position = UDim2.fromOffset(18, 18),
-		Size = UDim2.new(1, -18, 0, 20),
-		TextTransparency = Theme.TextDim,
-		Parent = rail,
-	})
+	UI.block(C.Line, { Size = UDim2.new(0, 3, 1, 0), Position = UDim2.new(1, -3, 0, 0), Parent = rail })
+	UI.halftone(rail, "TL", 10, 8)
 	local railList = UI.new("Frame", {
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(0, 56),
-		Size = UDim2.new(1, -1, 1, -56),
+		Position = UDim2.fromOffset(18, 24),
+		Size = UDim2.new(1, -36, 1, -90),
 		Parent = rail,
-	}, { UI.list(Enum.FillDirection.Vertical, 2) })
+	}, { UI.list(Enum.FillDirection.Vertical, 12) })
 	for i, name in TAB_ORDER do
-		local btn = UI.tab(tabs[name].title, function()
+		local btn = UI.bigButton(tabs[name].title, "secondary", function()
 			setTab(name)
 			Router.noteTab(name)
-		end, { LayoutOrder = i, Parent = railList })
+		end, {
+			Size = UDim2.new(1, 0, 0, 60),
+			TextSize = Theme.TextSize.Title,
+			LayoutOrder = i,
+			Parent = railList,
+		})
 		railButtons[name] = btn
 	end
+	UI.button("SETTINGS", "ghost", function()
+		setTab("Settings")
+	end, {
+		AnchorPoint = Vector2.new(0, 1),
+		Position = UDim2.new(0, 18, 1, -18),
+		Size = UDim2.new(1, -36, 0, 36),
+		FontFace = Theme.Font.Display,
+		TextSize = Theme.TextSize.Label,
+		Parent = rail,
+	})
 
-	-- Header
+	-- Header: brush title, stickers, close.
 	local header = UI.new("Frame", {
 		Name = "Header",
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(170, 0),
-		Size = UDim2.new(1, -170, 0, 60),
+		Position = UDim2.fromOffset(200, 0),
+		Size = UDim2.new(1, -200, 0, 84),
 		Parent = shell,
-	}, { UI.padding(0, 22) })
-	UI.rule({ Position = UDim2.new(0, -22, 1, -1), Size = UDim2.new(1, 44, 0, 1), Parent = header })
-	titleLabel = UI.text("CHARACTER", "display", Theme.TextSize.Title, { Size = UDim2.new(0.5, 0, 1, 0), Parent = header })
-	local chips = UI.new("Frame", {
+	}, { UI.padding(0, 26) })
+	UI.splat(header, UDim2.fromOffset(150, 58), 120, C.Red, 3, { ZIndex = 1 })
+	title = UI.brushTitle("ME", Theme.TextSize.Display, {
+		AnchorPoint = Vector2.new(0, 0.5),
+		Position = UDim2.new(0, 0, 0.5, 4),
+		ZIndex = 2,
+		Parent = header,
+	})
+	local right = UI.new("Frame", {
 		BackgroundTransparency = 1,
 		AnchorPoint = Vector2.new(1, 0.5),
-		Position = UDim2.new(1, 0, 0.5, 0),
-		Size = UDim2.fromOffset(360, 30),
+		Position = UDim2.new(1, 0, 0.5, 4),
+		Size = UDim2.fromOffset(420, 56),
 		Parent = header,
 	}, {
 		UI.new("UIListLayout", {
 			FillDirection = Enum.FillDirection.Horizontal,
 			HorizontalAlignment = Enum.HorizontalAlignment.Right,
 			VerticalAlignment = Enum.VerticalAlignment.Center,
-			Padding = UDim.new(0, 8),
+			Padding = UDim.new(0, 12),
 			SortOrder = Enum.SortOrder.LayoutOrder,
 		}),
 	})
-	goldChip = UI.chip("G 0", nil, { RichText = true, LayoutOrder = 1, Parent = chips })
-	crystalChip = UI.chip("CRYS 0", nil, { LayoutOrder = 2, Parent = chips })
-	UI.button("ESC", "secondary", function()
+	cashSticker = UI.sticker("$0", C.Paper, C.Ink, { LayoutOrder = 1, Parent = right })
+	bountySticker = UI.sticker("BOUNTY 0", C.Ink, C.Paper, { LayoutOrder = 2, Rotation = 2, Parent = right })
+	UI.bigButton("X", "primary", function()
 		Router.close()
-	end, {
-		FontFace = Theme.Font.Mono,
-		TextSize = Theme.TextSize.Caption,
-		Size = UDim2.fromOffset(46, 26),
-		LayoutOrder = 3,
-		Parent = chips,
-	})
+	end, { Size = UDim2.fromOffset(56, 56), TextSize = Theme.TextSize.Title, LayoutOrder = 3, Parent = right })
 
-	-- Content
 	content = UI.new("Frame", {
 		Name = "Content",
 		BackgroundTransparency = 1,
-		Position = UDim2.fromOffset(170, 60),
-		Size = UDim2.new(1, -170, 1, -60),
+		Position = UDim2.fromOffset(200, 84),
+		Size = UDim2.new(1, -200, 1, -84),
 		ClipsDescendants = true,
 		Parent = shell,
-	})
+	}, { UI.padding(10, 26) })
 
 	Router.register("Ledger", {
 		open = open,

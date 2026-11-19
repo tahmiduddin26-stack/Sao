@@ -1,5 +1,5 @@
 --!strict
--- Analytics: thin wrapper over Roblox AnalyticsService (plan 14).
+-- Analytics: thin wrapper over Roblox AnalyticsService.
 -- Funnel steps log once per player profile. Every call is pcall-guarded so
 -- analytics can never break gameplay.
 
@@ -32,10 +32,10 @@ function Analytics.funnel(player: Player, step: string)
 	end)
 end
 
-function Analytics.progression(player: Player, floorId: number, status: "Start" | "Complete" | "Fail")
+function Analytics.progression(player: Player, districtIndex: number, status: "Start" | "Complete" | "Fail")
 	pcall(function()
 		local enumStatus = (Enum.AnalyticsProgressionType :: any)[status]
-		AnalyticsService:LogProgressionEvent(player, Config.floorCode(floorId), enumStatus)
+		AnalyticsService:LogProgressionEvent(player, string.format("D%02d", districtIndex), enumStatus)
 	end)
 end
 

@@ -45,30 +45,46 @@ local function num(v: any, default: number): number
 	return n
 end
 
+local function rootOf(player: Player): BasePart?
+	local c = player.Character
+	return c and c:FindFirstChild("HumanoidRootPart") :: BasePart?
+end
+
 local COMMANDS: { [string]: (Player, any) -> () } = {
 	give_xp = function(player, args)
 		deps.Progression.addXp(player, math.clamp(num(args, 500), 1, 1e7), "Admin")
 	end,
-	give_gold = function(player, args)
-		deps.Progression.addGold(player, math.clamp(num(args, 1000), 1, 1e9), "Gameplay", "Admin")
+	give_cash = function(player, args)
+		deps.Progression.addCash(player, math.clamp(num(args, 1000), 1, 1e9), "Gameplay", "Admin")
 	end,
 	set_level = function(player, args)
 		deps.Progression.setLevel(player, num(args, 10))
 	end,
-	unlock_floor = function(player, args)
-		deps.Floor.unlock(player, num(args, 2))
+	give_bounty = function(player, args)
+		deps.Bounty.addBounty(player, math.clamp(num(args, 25000), 1, 1e9))
 	end,
 	unlock_all = function(player)
-		for _, f in Config.FLOORS do
-			deps.Floor.unlock(player, f.id)
+		local last = Config.DISTRICTS[#Config.DISTRICTS]
+		local data = deps.Data.get(player)
+		if data and data.bestBounty < last.bounty then
+			deps.Bounty.addBounty(player, last.bounty - data.bounty)
 		end
 	end,
-	clear_floor = function(player, args)
-		deps.Floor.markCleared(player, num(args, 1), 401, 1)
+	full_focus = function(player)
+		player:SetAttribute("Focus", Config.FOCUS_MAX)
 	end,
-	give_item = function(player, args)
-		if typeof(args) == "string" then
-			deps.Inventory.give(player, args, 1)
+	give_prop = function(player, args)
+		if typeof(args) == "string" and Config.PROPS[args] then
+			deps.Prop.giveToHand(player, args)
+		end
+	end,
+	spawn_enemy = function(player, args)
+		local root = rootOf(player)
+		local id = if typeof(args) == "string" and Config.ENEMIES[args] then args else "thug"
+		if root then
+			local area = player:GetAttribute("Area")
+			local ctx = if area == "Store" then { storeOwner = player.UserId } else { district = area }
+			deps.Enemy.spawn(id, root.CFrame * CFrame.new(0, 0, -14), ctx)
 		end
 	end,
 	advance_quest = function(player, args)
@@ -84,17 +100,12 @@ local COMMANDS: { [string]: (Player, any) -> () } = {
 		end
 	end,
 	test_banner = function(player, args)
-		local kind = if args == "boss" then "BossIntro" else "FloorCleared"
-		local f = Config.getFloor(1)
-		Remotes.event("Banner"):FireClient(player, {
-			kind = kind,
-			floorId = 1,
-			nextFloor = 2,
-			clearSeconds = 401,
-			partySize = 48,
-			name = f and f.boss.name,
-			title = f and f.boss.title,
-		})
+		if args == "boss" then
+			local d = Config.DISTRICTS[1]
+			Remotes.event("Banner"):FireClient(player, { kind = "BossIntro", name = d.boss.name, title = d.boss.title, district = d.code })
+		else
+			Remotes.event("Banner"):FireClient(player, { kind = "DistrictCleared", district = "D01", boss = Config.DISTRICTS[1].boss.name, first = true })
+		end
 	end,
 }
 

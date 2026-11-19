@@ -1,5 +1,6 @@
 --!strict
--- Theme: Lanternsteel (plan 23, 27). Palette, fonts, sizes and motion tokens.
+-- Theme: Ink Panel. Manga pages: paper panels, heavy ink borders, screentone
+-- fills and one red accent. Palette, fonts, sizes and motion tokens.
 -- Nothing else in the client hard-codes a colour, font or duration.
 
 local GuiService = game:GetService("GuiService")
@@ -7,66 +8,67 @@ local GuiService = game:GetService("GuiService")
 local Theme = {}
 
 ---------------------------------------------------------------------------
--- Palette: every colour has one job.
+-- Palette: every colour has one job. Red is the only accent.
 ---------------------------------------------------------------------------
 Theme.Color = {
-	Ink = Color3.fromHex("0E0F10"), -- scrims behind menus, tooltips, bar tracks
-	Steel = Color3.fromHex("16181A"), -- panel base
-	Plate = Color3.fromHex("23272B"), -- rows, slots, selected tab fill
-	Rule = Color3.fromHex("3A4046"), -- 1px hairlines and dividers
-	Bone = Color3.fromHex("ECE8DF"), -- primary text and icons
-	Lantern = Color3.fromHex("E8A93B"), -- skill energy, active/selected, primary button
-	Vigor = Color3.fromHex("6DBE7B"), -- HP and positive states
-	Tide = Color3.fromHex("6CB4DE"), -- MP
-	Ember = Color3.fromHex("D9573F"), -- danger, low HP, boss HP, destructive buttons
+	Shade = Color3.fromHex("0A0A0A"), -- scrims behind menus
+	Paper = Color3.fromHex("F3EFE6"), -- panel base
+	Tone = Color3.fromHex("DCD6CA"), -- rows, slots, bar tracks, selected tab fill
+	Line = Color3.fromHex("141414"), -- 2px panel borders and dividers
+	Ink = Color3.fromHex("141414"), -- text, icons, HP fill
+	Red = Color3.fromHex("D7261E"), -- Focus, Serious, active/selected, primary button
+	Danger = Color3.fromHex("9E1B16"), -- destructive buttons, low HP
 }
 
+-- Prop rarity reads through ink weight, not new hues.
 Theme.Rarity = {
-	Common = Color3.fromHex("A8A39A"),
-	Fine = Color3.fromHex("7DBE74"),
-	Rare = Color3.fromHex("5E9FD6"),
-	Heroic = Color3.fromHex("D2774A"),
-	Legendary = Color3.fromHex("E8C24A"),
+	Common = Color3.fromHex("8A857B"),
+	Fine = Color3.fromHex("141414"),
+	Rare = Color3.fromHex("D7261E"),
+	Signature = Color3.fromHex("D7261E"),
 } :: { [string]: Color3 }
 
--- Secondary text is Bone at reduced opacity, not a new colour.
+-- Secondary text is Ink at reduced opacity, not a new colour.
 Theme.TextDim = 0.45
 Theme.TextFaint = 0.65
 
--- "One step lighter" for hover states.
+-- Hover states on paper go one step darker (toward ink).
 function Theme.lighter(c: Color3): Color3
-	return c:Lerp(Theme.Color.Bone, 0.07)
+	return c:Lerp(Theme.Color.Ink, 0.08)
 end
 
 function Theme.darker(c: Color3): Color3
-	return c:Lerp(Theme.Color.Ink, 0.18)
+	return c:Lerp(Theme.Color.Shade, 0.18)
 end
 
 ---------------------------------------------------------------------------
 -- Type: built-in Roblox families only, so mockups match what ships.
 ---------------------------------------------------------------------------
 Theme.Font = {
-	Display = Font.new("rbxasset://fonts/families/Michroma.json", Enum.FontWeight.Regular),
-	Body = Font.new("rbxasset://fonts/families/TitilliumWeb.json", Enum.FontWeight.SemiBold),
-	BodyBold = Font.new("rbxasset://fonts/families/TitilliumWeb.json", Enum.FontWeight.Bold),
+	Display = Font.new("rbxasset://fonts/families/Bangers.json", Enum.FontWeight.Regular),
+	Body = Font.new("rbxasset://fonts/families/BuilderSans.json", Enum.FontWeight.Medium),
+	BodyBold = Font.new("rbxasset://fonts/families/BuilderSans.json", Enum.FontWeight.Bold),
 	Mono = Font.new("rbxasset://fonts/families/RobotoMono.json", Enum.FontWeight.Regular),
 	MonoBold = Font.new("rbxasset://fonts/families/RobotoMono.json", Enum.FontWeight.Bold),
 }
 
 Theme.TextSize = {
-	Caption = 13, -- minimum at design scale
-	Body = 15,
-	Label = 16,
-	Heading = 18,
-	Title = 22,
-	Display = 30,
-	Banner = 46,
+	Caption = 14, -- minimum at design scale
+	Body = 17,
+	Label = 18,
+	Heading = 22,
+	Title = 28,
+	Display = 38,
+	Banner = 52,
 }
 
 ---------------------------------------------------------------------------
--- Shape and surface: square corners, 1px hairlines, no shadows or gradients.
+-- Shape and surface: square corners, 3px ink borders, hard ink drop shadows,
+-- halftone dot corners. No soft shadows, gradients or blur.
 ---------------------------------------------------------------------------
-Theme.Stroke = 1
+Theme.Stroke = 3
+Theme.InkOffset = 6 -- hard comic drop shadow on panels
+Theme.ButtonInkOffset = 4 -- and on chunky buttons (collapses on press)
 Theme.Pad = 12
 Theme.Gap = 8
 Theme.TouchMin = 44
@@ -76,7 +78,7 @@ Theme.PlateImage = ""
 Theme.PlateSliceCenter = Rect.new(12, 12, 52, 52)
 
 -- Panel base transparency, scaled by the player's Preferred Transparency.
-local PANEL_BASE_TRANSPARENCY = 0.1
+local PANEL_BASE_TRANSPARENCY = 0.02
 local panelOpacity = 1
 
 function Theme.setPanelOpacity(v: number)
@@ -89,7 +91,7 @@ function Theme.panelTransparency(): number
 end
 
 ---------------------------------------------------------------------------
--- Motion tokens (plan 27.2)
+-- Motion tokens
 ---------------------------------------------------------------------------
 export type MotionToken = { time: number, style: Enum.EasingStyle, dir: Enum.EasingDirection }
 
@@ -113,7 +115,7 @@ Theme.Motion = {
 }
 
 ---------------------------------------------------------------------------
--- Toasts and banners (plan 26)
+-- Toasts and banners
 ---------------------------------------------------------------------------
 Theme.Toast = {
 	maxVisible = 3,
@@ -123,7 +125,7 @@ Theme.Toast = {
 }
 
 Theme.Banner = {
-	floorClearedHold = 2.5,
+	clearedHold = 2.5,
 	bossIntroHold = 1.8,
 }
 

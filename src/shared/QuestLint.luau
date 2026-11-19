@@ -36,9 +36,9 @@ function QuestLint.check(q: any, recentVerbs: { string }?): { string }
 		fail("same verb as one of the player's last two repeatables")
 	end
 
-	-- Rule 3: rooted in its floor.
-	if typeof(q.floor) ~= "number" then
-		fail("not tied to a floor")
+	-- Rule 3: rooted in its district.
+	if typeof(q.district) ~= "string" or q.district == "" then
+		fail("not tied to a district")
 	end
 
 	-- Rule 4: teaches or tests a system.
@@ -46,11 +46,11 @@ function QuestLint.check(q: any, recentVerbs: { string }?): { string }
 		fail("does not name the system it teaches")
 	end
 
-	-- Rule 5: a reward that matters (not only XP and Gold).
+	-- Rule 5: a reward that matters (not only XP and Cash).
 	local r = q.rewards or {}
-	local meaningful = (r.items and #r.items > 0) or (r.unlocks and #r.unlocks > 0) or (r.title ~= nil)
+	local meaningful = (r.unlocks and #r.unlocks > 0) or (r.title ~= nil)
 	if not meaningful then
-		fail("reward is only XP and Gold")
+		fail("reward is only XP and Cash")
 	end
 
 	-- Rule 6: consequence.

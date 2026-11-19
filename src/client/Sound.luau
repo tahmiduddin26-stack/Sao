@@ -1,5 +1,5 @@
 --!strict
--- Sound: plays named UI sound slots from Config.SOUNDS (plan 28).
+-- Sound: plays named UI sound slots from Config.SOUNDS.
 -- Empty slots are silent, so the game runs before audio is uploaded.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
